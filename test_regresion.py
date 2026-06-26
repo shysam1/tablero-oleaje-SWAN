@@ -246,3 +246,17 @@ def test_cliente_sin_credenciales_explica(monkeypatch, tmp_path):
     monkeypatch.setenv("HOME", str(tmp_path))
     with pytest.raises(RuntimeError, match="cdsapirc"):
         io_era5._cliente()
+
+
+def test_peticion_serie_arma_area_y_variables():
+    pet = io_era5._peticion_serie(lat=-37.0, lon=-73.5,
+                                  inicio="2024-07-28", fin="2024-07-28",
+                                  incluir_viento=True)
+    # Área de un punto: [N, W, S, E] alrededor de (lat, lon).
+    assert pet["area"][0] >= -37.0 >= pet["area"][2]
+    assert pet["area"][1] <= -73.5 <= pet["area"][3]
+    assert "significant_height_of_combined_wind_waves_and_swell" in pet["variable"]
+    assert "peak_wave_period" in pet["variable"]
+    assert "mean_wave_direction" in pet["variable"]
+    assert "10m_u_component_of_wind" in pet["variable"]
+    assert pet["format"] == "netcdf"
