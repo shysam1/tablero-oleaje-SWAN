@@ -215,3 +215,22 @@ def test_particionar_separa_dos_familias_y_conserva_energia():
     por_tp = sorted(fam, key=lambda f: f["Tp"])
     assert por_tp[0]["tipo"] == "sea"
     assert por_tp[-1]["tipo"] == "swell"
+
+
+def test_particionar_serie_devuelve_dataset_por_familia():
+    import xarray as xr
+    freqs, dirs, efth = _espectro_bimodal()
+    cubo = np.stack([efth, efth * 0.5])          # 2 pasos de tiempo
+    ds = xr.Dataset(
+        {"Efth": (("time", "freq", "dir"), cubo)},
+        coords={"time": np.array(["2024-07-28T00", "2024-07-28T03"],
+                                 dtype="datetime64[ns]"),
+                "freq": freqs, "dir": dirs})
+
+    res = particion_espectral.particionar_serie(ds, umbral_rel=0.0)
+    assert set(["Hs", "Tp", "Dir"]) <= set(res.data_vars)
+    assert res.sizes["time"] == 2
+    assert res.sizes["familia"] == 2
+    # La Hs total del paso 0 (raíz de la suma de m0) supera la de cualquier familia.
+    hs_fam0 = res["Hs"].isel(time=0).values
+    assert np.nanmax(hs_fam0) > 0

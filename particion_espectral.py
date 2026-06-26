@@ -124,24 +124,33 @@ def particionar_serie(ds_efth, viento_serie=None, umbral_rel=0.01, max_familias=
     Devuelve un Dataset(time, familia) con Hs/Tp/Dir/tipo por familia (rellena con
     NaN los pasos con menos familias). 'viento_serie', si se da, es un dict con
     arrays 'u10' y 'v10' por tiempo, para clasificar sea/swell con wave age.
+    El número de columnas 'familia' es el máximo de familias encontradas entre
+    todos los pasos (hasta max_familias), no siempre max_familias.
     """
     freqs = ds_efth["freq"].values
     dirs = ds_efth["dir"].values
     tiempos = ds_efth["time"].values
     nt = len(tiempos)
 
-    hs = np.full((nt, max_familias), np.nan)
-    tp = np.full((nt, max_familias), np.nan)
-    di = np.full((nt, max_familias), np.nan)
-    tipo = np.full((nt, max_familias), "", dtype=object)
-
+    # Primera pasada: calcular familias de todos los pasos para saber el máximo real.
+    resultados = []
     for t in range(nt):
         viento = None
         if viento_serie is not None:
             viento = (float(viento_serie["u10"][t]), float(viento_serie["v10"][t]))
-        familias = particionar(ds_efth["Efth"].isel(time=t).values,
-                               freqs, dirs, viento=viento, umbral_rel=umbral_rel)
-        for k, fam in enumerate(familias[:max_familias]):
+        fams = particionar(ds_efth["Efth"].isel(time=t).values,
+                           freqs, dirs, viento=viento, umbral_rel=umbral_rel)
+        resultados.append(fams)
+
+    n_fam = min(max(len(r) for r in resultados) if resultados else 1, max_familias)
+
+    hs = np.full((nt, n_fam), np.nan)
+    tp = np.full((nt, n_fam), np.nan)
+    di = np.full((nt, n_fam), np.nan)
+    tipo = np.full((nt, n_fam), "", dtype=object)
+
+    for t, familias in enumerate(resultados):
+        for k, fam in enumerate(familias[:n_fam]):
             hs[t, k], tp[t, k], di[t, k] = fam["Hs"], fam["Tp"], fam["Dir"]
             tipo[t, k] = fam["tipo"]
 
@@ -150,4 +159,4 @@ def particionar_serie(ds_efth, viento_serie=None, umbral_rel=0.01, max_familias=
          "Tp": (("time", "familia"), tp),
          "Dir": (("time", "familia"), di),
          "tipo": (("time", "familia"), tipo)},
-        coords={"time": tiempos, "familia": np.arange(max_familias)})
+        coords={"time": tiempos, "familia": np.arange(n_fam)})
