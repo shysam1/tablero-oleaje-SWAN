@@ -45,10 +45,12 @@ Todas las salidas van a `salidas\<fuente>\`, una subcarpeta por archivo o corrid
 
 | Archivo | Rol |
 |---|---|
-| `app_tablero.py` | Ventana principal (autodetección, botón Procesar SWAN). |
+| `app_tablero.py` | Ventana principal (autodetección, botones Procesar SWAN y Descargar ERA5). |
 | `io_oleaje.py` · `validacion.py` · `productos.py` · `tablero_oleaje.py` | Serie temporal en un punto → tablero de curvas. |
 | `io_swan.py` · `productos_swan.py` · `tablero_swan.py` | Campos SWAN estacionarios → tablero de mapas. |
 | `io_swan_nonst.py` · `video_swan.py` | Campos SWAN no estacionarios → videos (+ espectro). |
+| `io_era5.py` | Descarga de oleaje por coordenada desde ERA5 (serie Hs/Tp/Dir + espectros 2D). |
+| `particion_espectral.py` · `productos_particion.py` | Partición sea/swell por familias (watershed) → serie de Hs por familia, tabla y espectro polar. |
 | `swan_runner.py` · `swan_builder.py` · `gui_swan.py` | Correr SWAN y armar el `.swn`. |
 | `rutas.py` · `config.py` | Carpeta de salidas · preferencias entre sesiones. |
 | `test_regresion.py` | Red de seguridad (valores conocidos). |
