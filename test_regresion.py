@@ -234,3 +234,15 @@ def test_particionar_serie_devuelve_dataset_por_familia():
     # La Hs total del paso 0 (raíz de la suma de m0) supera la de cualquier familia.
     hs_fam0 = res["Hs"].isel(time=0).values
     assert np.nanmax(hs_fam0) > 0
+
+
+# --------------------------- Descarga ERA5 ---------------------------
+import io_era5
+
+
+def test_cliente_sin_credenciales_explica(monkeypatch, tmp_path):
+    """Sin ~/.cdsapirc, _cliente lanza un error claro de configuración."""
+    monkeypatch.setenv("USERPROFILE", str(tmp_path))   # HOME en Windows
+    monkeypatch.setenv("HOME", str(tmp_path))
+    with pytest.raises(RuntimeError, match="cdsapirc"):
+        io_era5._cliente()
