@@ -513,3 +513,16 @@ def test_app_tablero_importa_borde():
     import app_tablero
     import borde_oleaje, io_oleaje      # deben ser importables desde app_tablero
     assert hasattr(app_tablero, "validar_inputs_era5")
+
+
+# --------------------------- Batimetría automática ---------------------------
+import io_batimetria
+
+
+def test_epsg_utm_parsea_zona():
+    assert io_batimetria.epsg_utm("19S") == 32719
+    assert io_batimetria.epsg_utm("18S") == 32718
+    assert io_batimetria.epsg_utm("19N") == 32619
+    assert io_batimetria.epsg_utm(" 18s ") == 32718      # tolerante a espacios/caso
+    with pytest.raises(ValueError):
+        io_batimetria.epsg_utm("ABC")
