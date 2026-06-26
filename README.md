@@ -68,8 +68,25 @@ Todas las salidas van a `salidas\<fuente>\`, una subcarpeta por archivo o corrid
 ## Requisitos
 
 Python 3.13 con `numpy`, `pandas`, `xarray`, `netcdf4`, `scipy`, `matplotlib`,
-`windrose`, `cmocean`. Opcionales: `ffmpeg` (MP4; si no, GIF), `pytest` (tests).
+`windrose`, `cmocean`, `scikit-image` (partición espectral) y `cdsapi` (descarga
+ERA5). Opcionales: `ffmpeg` (MP4; si no, GIF), `pytest` (tests).
 Para *Procesar SWAN*, SWAN instalado y `swanrun` en el PATH.
+
+### Credenciales ERA5 (descarga por coordenada)
+
+La descarga usa el Copernicus Climate Data Store. Una sola vez:
+
+1. Crea una cuenta gratis en <https://cds.climate.copernicus.eu> y acepta los
+   términos del dataset ERA5.
+2. Crea el archivo `~/.cdsapirc` (en Windows, `C:\Users\<tu-usuario>\.cdsapirc`) con:
+
+   ```
+   url: https://cds.climate.copernicus.eu/api
+   key: <UID>:<API-KEY>
+   ```
+
+Sin ese archivo, el botón "Descargar ERA5…" avisa con el paso a paso y no
+descarga nada.
 
 ## Tests
 
