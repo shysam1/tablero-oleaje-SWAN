@@ -304,3 +304,27 @@ def test_descargar_serie_usa_cliente_y_parsea(monkeypatch, tmp_path):
                                  inicio="2024-07-28", fin="2024-07-28")
     assert {"Hs", "Tp", "Dir"} <= set(ds.data_vars)
     assert ds.sizes["time"] == 2
+
+
+def _nc_espectro_sintetico(ruta):
+    """Crea un .nc tipo ERA5 2D spectra: d2fd en log10, dims (time, freq, dir)."""
+    import xarray as xr
+    t = np.array(["2024-07-28T00"], dtype="datetime64[ns]")
+    freq = 0.03453 * 1.1 ** np.arange(30)         # 30 frecuencias ERA5
+    direction = np.arange(7.5, 360.0, 15.0)       # 24 direcciones ERA5
+    dens = np.full((len(t), len(freq), len(direction)), 0.5)   # densidad lineal
+    d2fd = np.log10(dens)                          # ERA5 la almacena en log10
+    ds = xr.Dataset(
+        {"d2fd": (("time", "frequency", "direction"), d2fd)},
+        coords={"time": t, "frequency": freq, "direction": direction})
+    ds.to_netcdf(ruta)
+
+
+def test_parsear_espectro_decodifica_log10_y_reordena(tmp_path):
+    ruta = tmp_path / "espectro.nc"
+    _nc_espectro_sintetico(ruta)
+    esp = io_era5._parsear_espectro_nc(ruta)
+    assert dict(esp.sizes) == {"time": 1, "freq": 30, "dir": 24}
+    assert set(["Efth"]) <= set(esp.data_vars)
+    # 10**log10(0.5) = 0.5 (des-logueo correcto).
+    assert float(esp["Efth"].isel(time=0, freq=0, dir=0)) == pytest.approx(0.5)

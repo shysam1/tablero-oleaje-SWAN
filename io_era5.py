@@ -115,3 +115,44 @@ def descargar_serie(lat, lon, inicio, fin, incluir_viento=False):
                             _peticion_serie(lat, lon, inicio, fin, incluir_viento),
                             str(destino))
     return _parsear_serie_nc(destino, lat, lon)
+
+
+_VARS_ESPECTRO = ["2d_wave_spectra"]    # parámetro d2fd del CDS
+
+
+def _parsear_espectro_nc(ruta):
+    """
+    .nc de ERA5 2D spectra → Dataset con Efth(time, freq, dir), des-logueado.
+
+    ERA5 guarda d2fd como log10 de la densidad; aquí se reconstruye 10**d2fd y se
+    renombran las dimensiones a (freq, dir) para igualar a leer_espectro_temporal.
+    """
+    bruto = xr.open_dataset(ruta)
+    d2fd = bruto["d2fd"]
+    efth = np.power(10.0, d2fd)                       # des-logueo; NaN se propaga
+    efth = efth.rename({"frequency": "freq", "direction": "dir"})
+
+    ds = xr.Dataset({"Efth": efth})
+    ds["Efth"].attrs = {"long_name": "Densidad de energía", "units": "m2/Hz/deg"}
+    ds["freq"].attrs = {"long_name": "Frecuencia", "units": "Hz"}
+    ds["dir"].attrs = {"long_name": "Dirección", "units": "deg"}
+    bruto.close()
+    return ds
+
+
+def descargar_espectro(lat, lon, inicio, fin):
+    """
+    Descarga el espectro 2D direccional ERA5 para un punto y rango, lo cachea como
+    .nc en salidas/ y devuelve un Dataset con Efth(time, freq, dir) listo para la
+    partición.
+    """
+    carpeta = rutas.carpeta_salida(_nombre_fuente(lat, lon, "espectro"))
+    destino = carpeta / "era5_espectro.nc"
+    if not destino.exists():
+        anios, meses, dias, horas = _rango_fechas(inicio, fin)
+        peticion = {"product_type": "reanalysis", "variable": _VARS_ESPECTRO,
+                    "year": anios, "month": meses, "day": dias, "time": horas,
+                    "area": [lat + 0.25, lon - 0.25, lat - 0.25, lon + 0.25],
+                    "format": "netcdf"}
+        _cliente().retrieve(_DATASET_ESPECTRO, peticion, str(destino))
+    return _parsear_espectro_nc(destino)
