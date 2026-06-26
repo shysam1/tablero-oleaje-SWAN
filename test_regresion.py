@@ -188,3 +188,30 @@ def test_parametros_de_familia_unimodal():
     assert fam["Dir"] == pytest.approx(200.0, abs=8.0)
     assert fam["Hs"] > 0
     assert fam["tipo"] == "swell"                            # Tp largo, sin viento
+
+
+def _espectro_bimodal():
+    """Sea de período corto (~0.25 Hz, 270°) + swell largo (~0.07 Hz, 200°)."""
+    freqs = np.linspace(0.04, 0.40, 30)
+    dirs = np.arange(0.0, 360.0, 15.0)
+    F, D = np.meshgrid(freqs, dirs, indexing="ij")
+    sea = np.exp(-((F - 0.25) / 0.03) ** 2) * np.exp(-((D - 270.0) / 20.0) ** 2)
+    swell = 0.6 * np.exp(-((F - 0.07) / 0.012) ** 2) * np.exp(-((D - 200.0) / 15.0) ** 2)
+    return freqs, dirs, sea + swell
+
+
+def test_particionar_separa_dos_familias_y_conserva_energia():
+    freqs, dirs, efth = _espectro_bimodal()
+    fam = particion_espectral.particionar(efth, freqs, dirs, umbral_rel=0.0)
+    assert len(fam) == 2
+
+    dfreq, ddir = particion_espectral._pesos(freqs, dirs)
+    m0_total = particion_espectral._m0(efth, dfreq, ddir)
+    assert sum(f["m0"] for f in fam) == pytest.approx(m0_total, rel=1e-9)
+
+    # Ordenadas por energía descendente.
+    assert fam[0]["m0"] >= fam[1]["m0"]
+    # La de período más largo es swell; la corta, sea.
+    por_tp = sorted(fam, key=lambda f: f["Tp"])
+    assert por_tp[0]["tipo"] == "sea"
+    assert por_tp[-1]["tipo"] == "swell"
