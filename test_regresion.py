@@ -238,6 +238,7 @@ def test_particionar_serie_devuelve_dataset_por_familia():
 
 # --------------------------- Descarga ERA5 ---------------------------
 import io_era5
+import rutas
 
 
 def test_cliente_sin_credenciales_explica(monkeypatch, tmp_path):
@@ -285,3 +286,21 @@ def test_parsear_serie_selecciona_punto_y_renombra(tmp_path):
     assert ds.sizes["time"] == 2
     assert float(ds["Hs"].isel(time=0)) == pytest.approx(2.5)
     assert "latitude" not in ds.dims          # punto ya seleccionado
+
+
+def test_descargar_serie_usa_cliente_y_parsea(monkeypatch, tmp_path):
+    """descargar_serie: pide al cliente, escribe el .nc y devuelve Dataset(time)."""
+    def _falso_retrieve(dataset, peticion, destino):
+        _nc_serie_sintetico(destino)          # simula la descarga del CDS
+
+    class _ClienteFalso:
+        def retrieve(self, dataset, peticion, destino):
+            _falso_retrieve(dataset, peticion, destino)
+
+    monkeypatch.setattr(io_era5, "_cliente", lambda: _ClienteFalso())
+    monkeypatch.setattr(rutas, "RAIZ_SALIDAS", tmp_path)
+
+    ds = io_era5.descargar_serie(lat=-37.0, lon=-73.5,
+                                 inicio="2024-07-28", fin="2024-07-28")
+    assert {"Hs", "Tp", "Dir"} <= set(ds.data_vars)
+    assert ds.sizes["time"] == 2

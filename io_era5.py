@@ -95,3 +95,23 @@ def _parsear_serie_nc(ruta, lat, lon):
     ds.attrs["fuente"] = f"ERA5 ({lat:.3f}, {lon:.3f})"
     bruto.close()
     return ds
+
+
+def _nombre_fuente(lat, lon, sufijo):
+    """Identificador de carpeta/archivo de salida para una coordenada."""
+    return f"ERA5_{lat:+.2f}_{lon:+.2f}_{sufijo}".replace(".", "p")
+
+
+def descargar_serie(lat, lon, inicio, fin, incluir_viento=False):
+    """
+    Descarga la serie ERA5 de Hs/Tp/Dir (opcional viento) para un punto y rango,
+    la cachea como .nc en salidas/ y devuelve un Dataset(time) listo para el
+    tablero de curvas.
+    """
+    carpeta = rutas.carpeta_salida(_nombre_fuente(lat, lon, "serie"))
+    destino = carpeta / "era5_serie.nc"
+    if not destino.exists():
+        _cliente().retrieve(_DATASET_SERIE,
+                            _peticion_serie(lat, lon, inicio, fin, incluir_viento),
+                            str(destino))
+    return _parsear_serie_nc(destino, lat, lon)
