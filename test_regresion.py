@@ -545,3 +545,37 @@ def test_normalizar_raster_etopo_y_gebco():
                        coords={"lat": lat[::-1], "lon": lon})
     out2 = io_batimetria._normalizar_raster(gebco)
     assert "elevation" in out2.data_vars and "lat" in out2.dims
+
+
+def _raster_sintetico(elev_func):
+    """Raster lat/lon (50×50) sobre Reñaca con elevation = elev_func(LAT, LON)."""
+    import xarray as xr
+    lat = np.linspace(-33.2, -32.8, 50)
+    lon = np.linspace(-71.9, -71.4, 50)
+    LAT, LON = np.meshgrid(lat, lon, indexing="ij")
+    return xr.Dataset({"elevation": (("lat", "lon"), elev_func(LAT, LON))},
+                      coords={"lat": lat, "lon": lon})
+
+
+def test_generar_bot_signo_y_cantidad(tmp_path):
+    raster = _raster_sintetico(lambda LAT, LON: np.full_like(LAT, -50.0))  # 50 m mar
+    malla = {"xpc": 250000.0, "ypc": 6340000.0, "xlenc": 2000.0,
+             "ylenc": 2000.0, "mxc": 5, "myc": 5}
+    ruta, meta = io_batimetria.generar_bot(malla, "19S", tmp_path, raster=raster)
+    bat = np.array(ruta.read_text().split(), dtype=float)
+    assert bat.size == (5 + 1) * (5 + 1)                 # (mxc+1)·(myc+1)
+    assert np.allclose(bat, 50.0, atol=1.0)              # depth = -(-50) = 50 m
+    assert meta["prof_min"] > 0
+
+
+def test_generar_bot_orientacion_norte_sur(tmp_path):
+    # elevation crece con la latitud (más al norte = más alto) → depth menor al norte.
+    raster = _raster_sintetico(lambda LAT, LON: (LAT + 33.0) * 1000.0)
+    malla = {"xpc": 250000.0, "ypc": 6340000.0, "xlenc": 4000.0,
+             "ylenc": 4000.0, "mxc": 8, "myc": 10}
+    ruta, meta = io_batimetria.generar_bot(malla, "19S", tmp_path, raster=raster)
+    bat = np.array(ruta.read_text().split(), dtype=float)
+    ny, nx = 10 + 1, 8 + 1
+    # io_swan reconstruye depth así; la fila norte (índice -1) debe ser menos profunda.
+    depth = np.flipud(bat.reshape(ny, nx))
+    assert depth[-1, :].mean() < depth[0, :].mean()

@@ -60,3 +60,56 @@ def _normalizar_raster(ds):
         ren[var] = "elevation"
     ds = ds.rename(ren)
     return ds[["elevation"]].sortby("lat").sortby("lon")
+
+
+def generar_bot(malla, zona_utm, carpeta, raster=None, nombre="bati.bot", margen=0.05):
+    """
+    Escribe el .bot de la malla (UTM) muestreando un raster de batimetría.
+
+    malla: dict {xpc, ypc, xlenc, ylenc, mxc, myc}. zona_utm: p. ej. '19S'.
+    raster: Dataset normalizado (lat/lon/elevation); si None, se descarga por bbox.
+    Devuelve (ruta_bot, meta) con meta = {n_nodos, prof_min, prof_max, pct_tierra, epsg}.
+    """
+    from pyproj import Transformer
+    from scipy.interpolate import RegularGridInterpolator
+
+    mxc, myc = int(malla["mxc"]), int(malla["myc"])
+    nx, ny = mxc + 1, myc + 1
+    dx = float(malla["xlenc"]) / mxc
+    dy = float(malla["ylenc"]) / myc
+    xs = float(malla["xpc"]) + np.arange(nx) * dx       # oeste→este
+    ys = float(malla["ypc"]) + np.arange(ny) * dy       # sur→norte
+    gx, gy = np.meshgrid(xs, ys)                        # (ny, nx)
+
+    epsg = epsg_utm(zona_utm)
+    a_geo = Transformer.from_crs(epsg, 4326, always_xy=True)
+    lon_nodos, lat_nodos = a_geo.transform(gx, gy)      # (ny, nx)
+
+    carpeta = Path(carpeta)
+    if raster is None:
+        raster = descargar_raster(float(lat_nodos.min()) - margen,
+                                  float(lat_nodos.max()) + margen,
+                                  float(lon_nodos.min()) - margen,
+                                  float(lon_nodos.max()) + margen,
+                                  carpeta / "_raster_bati.nc")
+
+    lats = raster["lat"].values
+    lons = raster["lon"].values
+    elev = np.asarray(raster["elevation"].values, dtype=float)
+    interp = RegularGridInterpolator((lats, lons), elev,
+                                     bounds_error=False, fill_value=None)
+    # Recortar al rango del raster: en los bordes usa el valor del borde (no extrapola).
+    plat = np.clip(lat_nodos.ravel(), lats.min(), lats.max())
+    plon = np.clip(lon_nodos.ravel(), lons.min(), lons.max())
+    elev_nodos = interp(np.column_stack([plat, plon])).reshape(ny, nx)
+    depth = -elev_nodos                                 # SWAN: profundidad +hacia abajo
+
+    bat = np.flipud(depth).ravel()                      # convención inversa de io_swan
+    carpeta.mkdir(parents=True, exist_ok=True)
+    ruta = carpeta / nombre
+    ruta.write_text("\n".join(f"{v:.2f}" for v in bat))
+
+    meta = {"n_nodos": int(bat.size),
+            "prof_min": float(np.nanmin(depth)), "prof_max": float(np.nanmax(depth)),
+            "pct_tierra": float(np.mean(depth <= 0) * 100.0), "epsg": epsg}
+    return ruta, meta
