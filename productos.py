@@ -19,6 +19,8 @@ import numpy as np
 import matplotlib.pyplot as plt
 from scipy import stats
 
+import productos_particion
+
 # np.trapz fue renombrado a np.trapezoid en numpy reciente; soportamos ambos.
 _integrar = getattr(np, "trapezoid", None) or np.trapz
 
@@ -265,6 +267,10 @@ PRODUCTOS = [
      "calcular": _calc_jonswap, "dibujar": _dib_jonswap},
     {"nombre": "Espectro medido S(f)", "requiere": ["Sf"], "proyeccion": None,
      "calcular": None, "dibujar": None},
+    {"nombre": "Partición sea/swell (serie)", "requiere": ["Efth"],
+     "proyeccion": None,
+     "calcular": productos_particion.calcular_serie,
+     "dibujar": productos_particion.dibujar_serie},
 ]
 
 

@@ -354,3 +354,16 @@ def test_tabla_familias_exportable():
     tabla = productos_particion.tabla_familias(efth, freqs, dirs)
     assert list(tabla.columns) == ["familia", "tipo", "Hs", "Tp", "Dir"]
     assert len(tabla) == 2
+
+
+def test_registro_productos_detecta_particion_con_efth():
+    import xarray as xr
+    import productos
+    freqs, dirs, efth = _espectro_bimodal()
+    ds = xr.Dataset(
+        {"Efth": (("time", "freq", "dir"), np.stack([efth]))},
+        coords={"time": np.array(["2024-07-28T00"], dtype="datetime64[ns]"),
+                "freq": freqs, "dir": dirs})
+    informe = productos.evaluar(ds)
+    item = next(i for i in informe if i["nombre"] == "Partición sea/swell (serie)")
+    assert item["disponible"] is True
