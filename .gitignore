@@ -1,0 +1,13 @@
+# Caché y temporales de Python
+__pycache__/
+*.pyc
+.pytest_cache/
+
+# Salidas generadas por la herramienta (tableros, videos, NetCDF)
+salidas/
+
+# Archivos NetCDF intermedios/descargados (datos, no código)
+*.nc
+
+# Preferencias locales de la máquina (rutas de diálogos)
+config.json
