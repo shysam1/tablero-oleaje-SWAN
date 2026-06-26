@@ -328,3 +328,29 @@ def test_parsear_espectro_decodifica_log10_y_reordena(tmp_path):
     assert set(["Efth"]) <= set(esp.data_vars)
     # 10**log10(0.5) = 0.5 (des-logueo correcto).
     assert float(esp["Efth"].isel(time=0, freq=0, dir=0)) == pytest.approx(0.5)
+
+
+# --------------------------- Productos de partición ---------------------------
+import productos_particion
+
+
+def test_calcular_particion_resume_familias():
+    import xarray as xr
+    freqs, dirs, efth = _espectro_bimodal()
+    cubo = np.stack([efth, efth])
+    ds = xr.Dataset(
+        {"Efth": (("time", "freq", "dir"), cubo)},
+        coords={"time": np.array(["2024-07-28T00", "2024-07-28T03"],
+                                 dtype="datetime64[ns]"),
+                "freq": freqs, "dir": dirs})
+    r = productos_particion.calcular_serie(ds)
+    assert "series" in r and r["series"].sizes["familia"] == 2
+    assert r["n_familias"] >= 2
+
+
+def test_tabla_familias_exportable():
+    """tabla_familias devuelve un DataFrame con una fila por familia del paso pico."""
+    freqs, dirs, efth = _espectro_bimodal()
+    tabla = productos_particion.tabla_familias(efth, freqs, dirs)
+    assert list(tabla.columns) == ["familia", "tipo", "Hs", "Tp", "Dir"]
+    assert len(tabla) == 2
