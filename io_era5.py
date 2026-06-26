@@ -68,3 +68,30 @@ def _peticion_serie(lat, lon, inicio, fin, incluir_viento=False, delta=0.25):
         "area": [lat + delta, lon - delta, lat - delta, lon + delta],   # N,W,S,E
         "format": "netcdf",
     }
+
+
+# Nombres cortos del .nc de ERA5 → variables canónicas del pipeline.
+_RENOMBRE_SERIE = {"swh": "Hs", "pp1d": "Tp", "mwd": "Dir",
+                   "u10": "u10", "v10": "v10"}
+
+_ATRIBUTOS = {
+    "Hs": {"long_name": "Altura significativa", "units": "m"},
+    "Tp": {"long_name": "Período de pico", "units": "s"},
+    "Dir": {"long_name": "Dirección media", "units": "deg"},
+}
+
+
+def _parsear_serie_nc(ruta, lat, lon):
+    """Abre el .nc de ERA5, selecciona el punto más cercano y renombra a Hs/Tp/Dir."""
+    bruto = xr.open_dataset(ruta)
+    punto = bruto.sel(latitude=lat, longitude=lon, method="nearest")
+    punto = punto.drop_vars(["latitude", "longitude"], errors="ignore")
+
+    presentes = {k: v for k, v in _RENOMBRE_SERIE.items() if k in punto.data_vars}
+    ds = punto[list(presentes)].rename(presentes)
+    for v, attrs in _ATRIBUTOS.items():
+        if v in ds.data_vars:
+            ds[v].attrs.update(attrs)
+    ds.attrs["fuente"] = f"ERA5 ({lat:.3f}, {lon:.3f})"
+    bruto.close()
+    return ds

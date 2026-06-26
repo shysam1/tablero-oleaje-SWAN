@@ -260,3 +260,28 @@ def test_peticion_serie_arma_area_y_variables():
     assert "mean_wave_direction" in pet["variable"]
     assert "10m_u_component_of_wind" in pet["variable"]
     assert pet["format"] == "netcdf"
+
+
+def _nc_serie_sintetico(ruta):
+    """Crea un .nc con la estructura de la serie ERA5 (swh/pp1d/mwd, punto+tiempo)."""
+    import xarray as xr
+    t = np.array(["2024-07-28T00", "2024-07-28T03"], dtype="datetime64[ns]")
+    lat = np.array([-36.75, -37.25]); lon = np.array([-73.75, -73.25])
+    forma = (len(t), len(lat), len(lon))
+    ds = xr.Dataset(
+        {"swh": (("time", "latitude", "longitude"), np.full(forma, 2.5)),
+         "pp1d": (("time", "latitude", "longitude"), np.full(forma, 12.0)),
+         "mwd": (("time", "latitude", "longitude"), np.full(forma, 225.0))},
+        coords={"time": t, "latitude": lat, "longitude": lon})
+    ds.to_netcdf(ruta)
+
+
+def test_parsear_serie_selecciona_punto_y_renombra(tmp_path):
+    ruta = tmp_path / "serie.nc"
+    _nc_serie_sintetico(ruta)
+    ds = io_era5._parsear_serie_nc(ruta, lat=-37.0, lon=-73.5)
+    assert {"Hs", "Tp", "Dir"} <= set(ds.data_vars)
+    assert "time" in ds.coords
+    assert ds.sizes["time"] == 2
+    assert float(ds["Hs"].isel(time=0)) == pytest.approx(2.5)
+    assert "latitude" not in ds.dims          # punto ya seleccionado
