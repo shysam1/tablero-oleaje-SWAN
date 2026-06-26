@@ -594,3 +594,34 @@ def test_gui_swan_expone_generar_batimetria():
     assert hasattr(gui_swan.VentanaSwan, "_bati_worker")
     import io_batimetria
     assert callable(io_batimetria.generar_bot)
+
+
+# --------------------------- Malla por lat/lon ---------------------------
+import geo_malla
+
+
+def test_malla_desde_latlon_renaca():
+    m = geo_malla.malla_desde_latlon(-32.97, -71.55, 8.0, 8.0, 100.0)
+    assert m["zona_utm"] == "19S"
+    assert m["mxc"] == 80 and m["myc"] == 80
+    assert m["xlenc"] == 8000.0 and m["ylenc"] == 8000.0
+    # round-trip: el centro de la malla calculada vuelve a ~(-71.55, -32.97)
+    from pyproj import Transformer
+    from io_batimetria import epsg_utm
+    a_geo = Transformer.from_crs(epsg_utm("19S"), 4326, always_xy=True)
+    lon_c, lat_c = a_geo.transform(m["xpc"] + m["xlenc"] / 2,
+                                   m["ypc"] + m["ylenc"] / 2)
+    assert lon_c == pytest.approx(-71.55, abs=1e-3)
+    assert lat_c == pytest.approx(-32.97, abs=1e-3)
+
+
+def test_malla_zona_por_longitud():
+    assert geo_malla.malla_desde_latlon(-33.0, -73.0, 5, 5, 100)["zona_utm"] == "18S"
+    assert geo_malla.malla_desde_latlon(-33.0, -71.55, 5, 5, 100)["zona_utm"] == "19S"
+
+
+def test_malla_validaciones():
+    with pytest.raises(ValueError):
+        geo_malla.malla_desde_latlon(-33.0, -71.55, 1.0, 1.0, 2000.0)   # celda > extensión
+    with pytest.raises(ValueError):
+        geo_malla.malla_desde_latlon(200.0, -71.55, 5, 5, 100)          # lat fuera de rango
