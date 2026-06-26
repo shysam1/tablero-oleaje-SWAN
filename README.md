@@ -26,6 +26,15 @@ La ventana principal tiene un selector y dos acciones:
   - *Armar y correr*: formulario (malla, batimetría, borde, salidas) que genera el
     `.swn` y lo corre. Valida coherencia física antes de lanzar.
 
+En *Armar y correr*, el botón **«Tomar borde de ERA5/serie…»** deriva la condición
+de borde (Hs/Tp/Dir) desde una serie de oleaje (un `.nc` de ERA5 o tu `.mat/.csv`):
+eliges la condición —periodo de retorno (Gumbel), máximo observado o reinante— y
+rellena los campos. La misma acción está en la ventana *Descargar ERA5* como
+**«Enviar a SWAN como borde»**. El lado de entrada, la dispersión, la malla y la
+batimetría los completas tú. **Convención del campo Dir: náutica** (de dónde viene
+el oleaje, grados desde el Norte); el `.swn` generado emite `SET NAUTICAL` para
+interpretarlo igual.
+
 El campo *Offset UTM grande (avanzado)* fija la georreferencia de los mapas; por
 defecto es el Golfo de Arauco. Cámbialo sólo para una corrida de otro lugar (no
 altera la forma de los mapas, sólo las etiquetas de los ejes).
@@ -51,6 +60,7 @@ Todas las salidas van a `salidas\<fuente>\`, una subcarpeta por archivo o corrid
 | `io_swan_nonst.py` · `video_swan.py` | Campos SWAN no estacionarios → videos (+ espectro). |
 | `io_era5.py` | Descarga de oleaje por coordenada desde ERA5 (serie Hs/Tp/Dir + espectros 2D). |
 | `particion_espectral.py` · `productos_particion.py` | Partición sea/swell por familias (watershed) → serie de Hs por familia, tabla y espectro polar. |
+| `borde_oleaje.py` | Deriva la condición de borde SWAN (Hs/Tp/Dir) de una serie: periodo de retorno (Gumbel), máximo observado o reinante. |
 | `swan_runner.py` · `swan_builder.py` · `gui_swan.py` | Correr SWAN y armar el `.swn`. |
 | `rutas.py` · `config.py` | Carpeta de salidas · preferencias entre sesiones. |
 | `test_regresion.py` | Red de seguridad (valores conocidos). |
