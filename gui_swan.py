@@ -23,6 +23,7 @@ import swan_builder
 import config
 import io_oleaje
 import borde_oleaje
+import io_batimetria
 
 
 def dialogo_condicion(parent):
@@ -164,6 +165,8 @@ class VentanaSwan(tk.Toplevel):
             side="left", padx=4)
         ttk.Button(bat, text="…", width=3,
                    command=self._elegir_bot).pack(side="left")
+        ttk.Button(bat, text="Generar batimetría…",
+                   command=self._generar_batimetria).pack(side="left", padx=(6, 0))
 
         # Malla
         ttk.Label(f, text="Malla de cómputo", font=("Segoe UI", 9, "bold")).pack(
@@ -176,6 +179,7 @@ class VentanaSwan(tk.Toplevel):
         m2 = ttk.Frame(f); m2.pack(fill="x", pady=(4, 0))
         campo(m2, "Celdas X", "mxc", 100)
         campo(m2, "Celdas Y", "myc", 120)
+        campo(m2, "Zona UTM", "zona_utm", "19S", ancho=6)
 
         # Condición de borde
         ttk.Label(f, text="Condición de borde (marejada)",
@@ -275,6 +279,62 @@ class VentanaSwan(tk.Toplevel):
                                                   ("Todos", "*.*")])
         if r:
             self.bat_archivo.set(r)
+
+    def _generar_batimetria(self):
+        """Genera el .bot desde la malla (descarga GEBCO/ETOPO o usa raster local)."""
+        try:
+            malla = {k: float(self.v[k].get())
+                     for k in ("xpc", "ypc", "xlenc", "ylenc")}
+            malla["mxc"] = int(float(self.v["mxc"].get()))
+            malla["myc"] = int(float(self.v["myc"].get()))
+            zona = self.v["zona_utm"].get()
+        except (ValueError, KeyError) as e:
+            messagebox.showerror("Malla inválida",
+                                 f"Revisa los campos de malla/zona: {e}")
+            return
+        destino = self.dest_nuevo.get().strip()
+        if not destino:
+            messagebox.showwarning("Falta carpeta",
+                                   "Elige la carpeta destino del caso primero.")
+            return
+        raster = None
+        if messagebox.askyesno(
+                "Batimetría",
+                "¿Usar un archivo de batimetría local?\n"
+                "Sí = elegir un .nc propio (SHOA u otro)\n"
+                "No = descargar GEBCO/ETOPO automáticamente"):
+            ruta_r = filedialog.askopenfilename(
+                title="Raster de batimetría (.nc)",
+                filetypes=[("NetCDF", "*.nc"), ("Todos", "*.*")])
+            if not ruta_r:
+                return
+            try:
+                raster = io_batimetria.leer_raster_local(ruta_r)
+            except Exception as e:
+                messagebox.showerror("Raster inválido", str(e))
+                return
+        self.log.insert("end", "Generando batimetría…\n")
+        self.log.see("end")
+        threading.Thread(target=self._bati_worker, daemon=True,
+                         args=(malla, zona, destino, raster)).start()
+
+    def _bati_worker(self, malla, zona, destino, raster):
+        """Corre generar_bot fuera del hilo de la GUI y rellena el campo .bot."""
+        try:
+            ruta, meta = io_batimetria.generar_bot(malla, zona, destino, raster=raster)
+        except Exception as e:
+            self.after(0, lambda: self.log.insert("end", f"Error batimetría: {e}\n"))
+            return
+
+        def ok():
+            self.bat_archivo.set(str(ruta))
+            self.log.insert(
+                "end",
+                f"Batimetría lista: {ruta.name} — profundidad "
+                f"{meta['prof_min']:.1f} a {meta['prof_max']:.1f} m, "
+                f"{meta['pct_tierra']:.0f}% en tierra.\n")
+            self.log.see("end")
+        self.after(0, ok)
 
     def _log(self, msg):
         self.after(0, lambda: (self.log.insert("end", msg + "\n"),

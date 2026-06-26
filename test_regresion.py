@@ -586,3 +586,11 @@ def test_url_erddap_arma_bbox():
     assert url.startswith("https://")
     assert "etopo180.nc?altitude" in url
     assert "-33.1" in url and "-71.5" in url
+
+
+def test_gui_swan_expone_generar_batimetria():
+    import gui_swan
+    assert hasattr(gui_swan.VentanaSwan, "_generar_batimetria")
+    assert hasattr(gui_swan.VentanaSwan, "_bati_worker")
+    import io_batimetria
+    assert callable(io_batimetria.generar_bot)
