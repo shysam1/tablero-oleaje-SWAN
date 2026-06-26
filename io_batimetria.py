@@ -113,3 +113,37 @@ def generar_bot(malla, zona_utm, carpeta, raster=None, nombre="bati.bot", margen
             "prof_min": float(np.nanmin(depth)), "prof_max": float(np.nanmax(depth)),
             "pct_tierra": float(np.mean(depth <= 0) * 100.0), "epsg": epsg}
     return ruta, meta
+
+
+# Fuente de batimetría global (ERDDAP de NOAA). ETOPO1 (~1.85 km) confirmado
+# estable; cambiar a un dataset más fino si se valida su id/variable.
+_BASE_ERDDAP = "https://coastwatch.pfeg.noaa.gov/erddap/griddap"
+_DATASET_ERDDAP = "etopo180"
+_VAR_ERDDAP = "altitude"
+
+
+def _url_erddap(lat_min, lat_max, lon_min, lon_max):
+    """URL ERDDAP (.nc) del recorte por bbox del dataset de batimetría."""
+    rango = (f"%5B({lat_min}):({lat_max})%5D"
+             f"%5B({lon_min}):({lon_max})%5D")
+    return f"{_BASE_ERDDAP}/{_DATASET_ERDDAP}.nc?{_VAR_ERDDAP}{rango}"
+
+
+def descargar_raster(lat_min, lat_max, lon_min, lon_max, destino):
+    """Descarga el recorte de batimetría por HTTP y lo devuelve normalizado."""
+    import urllib.request
+    url = _url_erddap(lat_min, lat_max, lon_min, lon_max)
+    destino = Path(destino)
+    destino.parent.mkdir(parents=True, exist_ok=True)
+    try:
+        urllib.request.urlretrieve(url, destino)
+    except Exception as e:
+        raise RuntimeError(
+            "No se pudo descargar la batimetría (¿sin internet?). "
+            "Usa un archivo de batimetría local.") from e
+    return _normalizar_raster(xr.open_dataset(destino))
+
+
+def leer_raster_local(ruta):
+    """Abre un raster de batimetría propio (.nc) y lo devuelve normalizado."""
+    return _normalizar_raster(xr.open_dataset(ruta))

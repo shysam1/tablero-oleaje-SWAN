@@ -579,3 +579,10 @@ def test_generar_bot_orientacion_norte_sur(tmp_path):
     # io_swan reconstruye depth así; la fila norte (índice -1) debe ser menos profunda.
     depth = np.flipud(bat.reshape(ny, nx))
     assert depth[-1, :].mean() < depth[0, :].mean()
+
+
+def test_url_erddap_arma_bbox():
+    url = io_batimetria._url_erddap(-33.1, -32.9, -71.8, -71.5)
+    assert url.startswith("https://")
+    assert "etopo180.nc?altitude" in url
+    assert "-33.1" in url and "-71.5" in url
