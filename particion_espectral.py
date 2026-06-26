@@ -36,7 +36,7 @@ def _m0(efth, dfreq, ddir):
     return float(np.sum(efth * dfreq[:, None]) * ddir)
 
 
-def _clasificar(fp, dir_media, viento, f_corte=0.10):
+def _clasificar(fp, dir_media, viento, f_corte=0.125):
     """
     Clasifica una familia como 'sea' o 'swell'.
 
@@ -51,7 +51,7 @@ def _clasificar(fp, dir_media, viento, f_corte=0.10):
         cp = G / (2.0 * np.pi * fp) if fp > 0 else np.inf
         delta = np.deg2rad(dir_media - dir_viento)
         return "sea" if u10 * np.cos(delta) > 1.3 * cp else "swell"
-    return "sea" if fp >= f_corte else "swell"
+    return "sea" if fp > f_corte else "swell"
 
 
 def _parametros(efth, mascara, freqs, dirs, dfreq, ddir, viento):

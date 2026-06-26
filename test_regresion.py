@@ -171,3 +171,20 @@ def test_pesos_y_m0_reconstruyen_hs():
     hs = 4.0 * np.sqrt(m0)
     assert m0 > 0
     assert 0.0 < hs < 5.0           # rango físico para esa energía
+
+
+def test_parametros_de_familia_unimodal():
+    """Sobre un espectro unimodal, la máscara total reproduce Hs/Tp/Dir del pico."""
+    freqs = np.linspace(0.04, 0.40, 30)
+    dirs = np.arange(0.0, 360.0, 15.0)
+    F, D = np.meshgrid(freqs, dirs, indexing="ij")
+    efth = np.exp(-((F - 0.10) / 0.02) ** 2) * np.exp(-((D - 200.0) / 20.0) ** 2)
+
+    dfreq, ddir = particion_espectral._pesos(freqs, dirs)
+    mascara = np.ones_like(efth, dtype=bool)
+    fam = particion_espectral._parametros(efth, mascara, freqs, dirs,
+                                          dfreq, ddir, viento=None)
+    assert fam["Tp"] == pytest.approx(1.0 / 0.10, abs=1.0)   # pico en 0.10 Hz
+    assert fam["Dir"] == pytest.approx(200.0, abs=8.0)
+    assert fam["Hs"] > 0
+    assert fam["tipo"] == "swell"                            # Tp largo, sin viento
