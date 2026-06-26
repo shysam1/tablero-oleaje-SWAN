@@ -392,3 +392,79 @@ def test_validar_inputs_era5_convierte_y_valida():
     assert (lat, lon) == pytest.approx((-37.0, -73.5))
     with pytest.raises(ValueError):
         app_tablero.validar_inputs_era5("abc", "-73.5", "2024-07-28", "2024-07-29")
+
+
+# --------------------------- Borde de oleaje (puente SWAN) ---------------------------
+import borde_oleaje
+
+
+def _serie_sintetica(con_dir=True):
+    """Serie de 12 años con un temporal real conocido (peak) en una fecha."""
+    import xarray as xr
+    t = np.arange("2008-01-01", "2020-01-01", dtype="datetime64[D]")   # 12 años
+    n = len(t)
+    rng = np.random.default_rng(0)
+    hs = 1.5 + np.abs(rng.normal(0.0, 0.7, n))
+    tp = 6.0 + 0.5 * hs
+    dirr = np.full(n, 200.0)
+    ipk = 1500
+    hs[ipk], tp[ipk], dirr[ipk] = 9.0, 14.0, 315.0    # peak real
+    data = {"Hs": ("time", hs), "Tp": ("time", tp)}
+    if con_dir:
+        data["Dir"] = ("time", dirr)
+    return xr.Dataset(data, coords={"time": t}), ipk, hs, tp, dirr
+
+
+def test_borde_maximo_toma_el_peak():
+    ds, ipk, hs, tp, dirr = _serie_sintetica()
+    b = borde_oleaje.condicion_borde(ds, "maximo")
+    assert b["hs"] == pytest.approx(9.0)
+    assert b["per"] == pytest.approx(14.0)
+    assert b["dir"] == pytest.approx(315.0)
+    assert "Máximo observado" in b["descripcion"]
+
+
+def test_borde_retorno_monotono_y_hereda_peak():
+    ds, *_ = _serie_sintetica()
+    b100 = borde_oleaje.condicion_borde(ds, "retorno", 100)
+    b2 = borde_oleaje.condicion_borde(ds, "retorno", 2)
+    assert b100["hs"] > b2["hs"]                 # T mayor → Hs mayor (Gumbel monótono)
+    assert b100["per"] == pytest.approx(14.0)    # Tp/Dir heredados del peak real
+    assert b100["dir"] == pytest.approx(315.0)
+    assert "T=100" in b100["descripcion"]
+
+
+def test_borde_retorno_pocos_datos_falla():
+    import xarray as xr
+    t = np.arange("2020-01-01", "2020-02-01", dtype="datetime64[D]")   # 1 año solo
+    ds = xr.Dataset({"Hs": ("time", np.linspace(1, 3, len(t)))}, coords={"time": t})
+    with pytest.raises(ValueError, match="2 años"):
+        borde_oleaje.condicion_borde(ds, "retorno")
+
+
+def test_borde_reinante_mediana_y_sector():
+    ds, ipk, hs, tp, dirr = _serie_sintetica()
+    b = borde_oleaje.condicion_borde(ds, "reinante")
+    assert b["hs"] == pytest.approx(float(np.median(hs)))
+    assert b["dir"] == pytest.approx(191.25)     # sector dominante de 200° (180–202.5)
+    assert "reinante" in b["descripcion"].lower()
+
+
+def test_borde_sin_dir_devuelve_none():
+    ds, *_ = _serie_sintetica(con_dir=False)
+    b = borde_oleaje.condicion_borde(ds, "maximo")
+    assert b["dir"] is None
+    assert b["per"] == pytest.approx(14.0)
+
+
+def test_builder_emite_set_nautical():
+    txt = swan_builder.construir_swn(
+        nombre="T", malla={"xpc": 0., "ypc": 0., "xlenc": 1000, "ylenc": 1000,
+                           "mxc": 10, "myc": 10},
+        batimetria={"archivo": "f.bot"},
+        bordes=[{"lado": "W", "hs": 2., "per": 10., "dir": 270., "dd": 15.}],
+        salidas=("Hs", "Dir"))
+    assert "SET NAUTICAL" in txt
+    # el borde y el resto siguen intactos
+    assert "BOUN SIDE W CCW CON PAR 2.0 10.0 270.0 15.0" in txt
+    assert "CGRID 0.0 0.0 0.0 1000 1000 10 10 CIRCLE" in txt
