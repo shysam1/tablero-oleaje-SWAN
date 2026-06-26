@@ -24,6 +24,7 @@ import config
 import io_oleaje
 import borde_oleaje
 import io_batimetria
+import geo_malla
 
 
 def dialogo_condicion(parent):
@@ -63,6 +64,40 @@ def dialogo_condicion(parent):
     if "modo" not in elegido:
         return None
     return elegido["modo"], elegido["tr"]
+
+
+def dialogo_latlon(parent):
+    """
+    Diálogo para definir la malla por lat/lon (centro + tamaño + celda).
+    Devuelve un dict {lat, lon, ancho, alto, celda} (strings) o None si se cancela.
+    """
+    win = tk.Toplevel(parent)
+    win.title("Definir malla por lat/lon")
+    win.transient(parent)
+    win.grab_set()
+    campos = {}
+    for etiqueta, clave, valor in (
+            ("Latitud centro", "lat", "-32.97"),
+            ("Longitud centro", "lon", "-71.55"),
+            ("Ancho [km]", "ancho", "8"),
+            ("Alto [km]", "alto", "8"),
+            ("Tamaño de celda [m]", "celda", "100")):
+        fila = ttk.Frame(win)
+        fila.pack(fill="x", padx=10, pady=3)
+        ttk.Label(fila, text=etiqueta, width=20).pack(side="left")
+        var = tk.StringVar(value=valor)
+        ttk.Entry(fila, textvariable=var, width=12).pack(side="left")
+        campos[clave] = var
+
+    elegido = {}
+
+    def aceptar():
+        elegido.update({k: v.get() for k, v in campos.items()})
+        win.destroy()
+
+    ttk.Button(win, text="Calcular", command=aceptar).pack(pady=10, ipadx=8)
+    parent.wait_window(win)
+    return elegido or None
 
 
 class VentanaSwan(tk.Toplevel):
@@ -180,6 +215,9 @@ class VentanaSwan(tk.Toplevel):
         campo(m2, "Celdas X", "mxc", 100)
         campo(m2, "Celdas Y", "myc", 120)
         campo(m2, "Zona UTM", "zona_utm", "19S", ancho=6)
+
+        ttk.Button(f, text="Definir por lat/lon…",
+                   command=self._definir_malla_latlon).pack(anchor="w", pady=(6, 0))
 
         # Condición de borde
         ttk.Label(f, text="Condición de borde (marejada)",
@@ -335,6 +373,29 @@ class VentanaSwan(tk.Toplevel):
                 f"{meta['pct_tierra']:.0f}% en tierra.\n")
             self.log.see("end")
         self.after(0, ok)
+
+    def _definir_malla_latlon(self):
+        """Calcula la malla UTM desde lat/lon y rellena los campos del formulario."""
+        datos = dialogo_latlon(self)
+        if not datos:
+            return
+        try:
+            m = geo_malla.malla_desde_latlon(
+                float(datos["lat"]), float(datos["lon"]),
+                float(datos["ancho"]), float(datos["alto"]), float(datos["celda"]))
+        except (ValueError, KeyError) as e:
+            messagebox.showerror("Datos inválidos", str(e))
+            return
+        self.v["xpc"].set(f"{m['xpc']:.0f}")
+        self.v["ypc"].set(f"{m['ypc']:.0f}")
+        self.v["xlenc"].set(f"{m['xlenc']:.0f}")
+        self.v["ylenc"].set(f"{m['ylenc']:.0f}")
+        self.v["mxc"].set(str(m["mxc"]))
+        self.v["myc"].set(str(m["myc"]))
+        self.v["zona_utm"].set(m["zona_utm"])
+        self.log.insert("end", f"Malla definida: zona {m['zona_utm']}, "
+                        f"{m['mxc']}×{m['myc']} celdas.\n")
+        self.log.see("end")
 
     def _log(self, msg):
         self.after(0, lambda: (self.log.insert("end", msg + "\n"),

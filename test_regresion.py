@@ -625,3 +625,9 @@ def test_malla_validaciones():
         geo_malla.malla_desde_latlon(-33.0, -71.55, 1.0, 1.0, 2000.0)   # celda > extensión
     with pytest.raises(ValueError):
         geo_malla.malla_desde_latlon(200.0, -71.55, 5, 5, 100)          # lat fuera de rango
+
+
+def test_gui_swan_expone_definir_malla_latlon():
+    import gui_swan
+    assert callable(gui_swan.dialogo_latlon)
+    assert hasattr(gui_swan.VentanaSwan, "_definir_malla_latlon")
