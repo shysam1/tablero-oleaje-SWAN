@@ -15,6 +15,8 @@ matplotlib.use("Agg")
 import matplotlib.pyplot as plt
 from matplotlib.colors import TwoSlopeNorm
 
+import productos_particion
+
 
 def _vectores_direccion(dir_grados):
     """Componentes (u, v) de la dirección, según la convención de los .m."""
@@ -99,6 +101,8 @@ PRODUCTOS_SWAN = [
      "requiere": ["Setup"], "proyeccion": None, "dibujar": _mapa_setup},
     {"nombre": "Espectro direccional", "fuente": "espectro",
      "requiere": [], "proyeccion": "polar", "dibujar": _espectro_direccional},
+    {"nombre": "Espectro particionado", "fuente": "espectro",
+     "requiere": [], "proyeccion": "polar", "dibujar": productos_particion.dibujar_polar},
 ]
 
 

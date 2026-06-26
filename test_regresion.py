@@ -367,3 +367,19 @@ def test_registro_productos_detecta_particion_con_efth():
     informe = productos.evaluar(ds)
     item = next(i for i in informe if i["nombre"] == "Partición sea/swell (serie)")
     assert item["disponible"] is True
+
+
+def test_espectro_particionado_registrado_en_swan():
+    import productos_swan
+    # Una corrida mínima con espectro (un paso) y sin dominios.
+    import xarray as xr
+    freqs, dirs, efth = _espectro_bimodal()
+    espectro = xr.Dataset(
+        {"Efth": (("time", "freq", "dir"), np.stack([efth]))},
+        coords={"time": np.array(["2024-07-28T00"], dtype="datetime64[ns]"),
+                "freq": freqs, "dir": dirs})
+    corrida = {"dominios": {}, "espectro": espectro, "meta": {}}
+    informe = productos_swan.evaluar(corrida)
+    item = next(i for i in informe if i["nombre"] == "Espectro particionado")
+    assert item["disponible"] is True
+    assert item["proyeccion"] == "polar"
