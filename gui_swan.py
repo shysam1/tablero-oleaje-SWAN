@@ -21,6 +21,47 @@ from tkinter import filedialog, messagebox, ttk, scrolledtext
 import swan_runner
 import swan_builder
 import config
+import io_oleaje
+import borde_oleaje
+
+
+def dialogo_condicion(parent):
+    """
+    Diálogo modal para elegir la condición de borde. Devuelve (modo, T) o None si
+    se cancela. T solo aplica al modo 'retorno'. Compartido por las dos vías
+    (formulario SWAN y ventana ERA5).
+    """
+    win = tk.Toplevel(parent)
+    win.title("Condición de borde")
+    win.transient(parent)
+    win.grab_set()
+    modo = tk.StringVar(value="retorno")
+    tr = tk.StringVar(value="100")
+    for val, txt in (("retorno", "Periodo de retorno (Gumbel)"),
+                     ("maximo", "Máximo observado"),
+                     ("reinante", "Oleaje reinante (p50)")):
+        ttk.Radiobutton(win, text=txt, variable=modo, value=val).pack(
+            anchor="w", padx=12, pady=2)
+    fila = ttk.Frame(win)
+    fila.pack(anchor="w", padx=12, pady=(4, 0))
+    ttk.Label(fila, text="T [años] (solo retorno):").pack(side="left")
+    ttk.Entry(fila, textvariable=tr, width=6).pack(side="left", padx=(4, 0))
+
+    elegido = {}
+
+    def aceptar():
+        try:
+            elegido["tr"] = int(float(tr.get()))
+        except ValueError:
+            elegido["tr"] = 100
+        elegido["modo"] = modo.get()
+        win.destroy()
+
+    ttk.Button(win, text="Aceptar", command=aceptar).pack(pady=10, ipadx=8)
+    parent.wait_window(win)
+    if "modo" not in elegido:
+        return None
+    return elegido["modo"], elegido["tr"]
 
 
 class VentanaSwan(tk.Toplevel):
@@ -29,7 +70,7 @@ class VentanaSwan(tk.Toplevel):
     LADOS = ("N", "S", "E", "W")
     VARIABLES = ("Hs", "Tp", "Dir", "Setup")
 
-    def __init__(self, master=None):
+    def __init__(self, master=None, borde_inicial=None):
         super().__init__(master)
         self.title("Procesar SWAN")
         self.geometry("720x640")
@@ -37,6 +78,9 @@ class VentanaSwan(tk.Toplevel):
         self._proc = None                  # proceso SWAN en curso (para cancelar)
         self._cancelar = threading.Event()
         self._construir()
+        if borde_inicial:
+            self.aplicar_borde(borde_inicial)
+            self.nb.select(1)        # deja activa la pestaña "Armar y correr"
 
     # ------------------------------------------------------------------ UI
     def _construir(self):
@@ -50,6 +94,7 @@ class VentanaSwan(tk.Toplevel):
                                                                    pady=(0, 8))
 
         nb = ttk.Notebook(marco)
+        self.nb = nb
         nb.pack(fill="x")
         nb.add(self._pestana_existente(nb), text="Correr caso existente")
         nb.add(self._pestana_nuevo(nb), text="Armar y correr")
@@ -161,6 +206,9 @@ class VentanaSwan(tk.Toplevel):
         ttk.Checkbutton(sal, text="Estacionario", variable=self.estacionario).pack(
             side="left", padx=(16, 0))
 
+        ttk.Button(f, text="Tomar borde de ERA5/serie…",
+                   command=self._tomar_borde_archivo).pack(anchor="w", pady=(8, 0))
+
         self.boton_armar = ttk.Button(f, text="Generar .swn y correr",
                                       command=self._armar_y_correr)
         self.boton_armar.pack(anchor="w", pady=12, ipadx=8, ipady=3)
@@ -179,6 +227,26 @@ class VentanaSwan(tk.Toplevel):
                         f"Hs={borde.get('hs')}, Tp={borde.get('per')}, "
                         f"Dir={borde.get('dir')}\n")
         self.log.see("end")
+
+    def _tomar_borde_archivo(self):
+        """Vía A: elige un archivo de serie + condición y rellena el borde."""
+        ruta = filedialog.askopenfilename(
+            title="Serie de oleaje (ERA5/.mat/.csv/.nc)",
+            initialdir=config.obtener("ultima_carpeta_datos"),
+            filetypes=[("Datos de oleaje", "*.nc *.mat *.csv"), ("Todos", "*.*")])
+        if not ruta:
+            return
+        cond = dialogo_condicion(self)
+        if not cond:
+            return
+        modo, tr = cond
+        try:
+            ds = io_oleaje.cargar(ruta)
+            borde = borde_oleaje.condicion_borde(ds, modo, tr)
+        except Exception as e:
+            messagebox.showerror("No se pudo derivar el borde", str(e))
+            return
+        self.aplicar_borde(borde)
 
     # -------------------------------------------------------------- acciones
     def _elegir_dir(self, var):

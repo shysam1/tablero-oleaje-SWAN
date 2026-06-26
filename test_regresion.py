@@ -500,3 +500,10 @@ def test_aplicar_borde_rellena_formulario():
     assert stub2.v["hs"].valor == "2"
     assert stub2.v["per"].valor == ""
     assert stub2.v["dir"].valor == ""
+
+
+def test_gui_swan_expone_dialogo_y_handler():
+    import gui_swan
+    assert callable(gui_swan.dialogo_condicion)
+    assert hasattr(gui_swan.VentanaSwan, "_tomar_borde_archivo")
+    assert hasattr(gui_swan.VentanaSwan, "aplicar_borde")
