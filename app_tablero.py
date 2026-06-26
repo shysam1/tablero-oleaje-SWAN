@@ -30,6 +30,8 @@ import gui_swan
 import config
 import io_era5
 import rutas
+import io_oleaje
+import borde_oleaje
 
 
 def validar_inputs_era5(lat_txt, lon_txt, inicio, fin):
@@ -151,6 +153,36 @@ class AppTablero(tk.Tk):
                                    viento.get())).start()
 
         ttk.Button(win, text="Descargar", command=lanzar).pack(pady=12, ipadx=10)
+
+        def enviar_borde():
+            try:
+                lat, lon = validar_inputs_era5(
+                    campos["lat"].get(), campos["lon"].get(),
+                    campos["inicio"].get(), campos["fin"].get())
+            except ValueError as e:
+                messagebox.showerror("Datos inválidos", str(e))
+                return
+            nc = (rutas.carpeta_salida(io_era5._nombre_fuente(lat, lon, "serie"))
+                  / "era5_serie.nc")
+            if not nc.exists():
+                messagebox.showwarning(
+                    "Sin datos",
+                    "Primero descarga la serie ERA5 para esta coordenada.")
+                return
+            cond = gui_swan.dialogo_condicion(win)
+            if not cond:
+                return
+            modo, tr = cond
+            try:
+                ds = io_oleaje.cargar(nc)
+                borde = borde_oleaje.condicion_borde(ds, modo, tr)
+            except Exception as e:
+                messagebox.showerror("No se pudo derivar el borde", str(e))
+                return
+            gui_swan.VentanaSwan(self, borde_inicial=borde)
+
+        ttk.Button(win, text="Enviar a SWAN como borde",
+                   command=enviar_borde).pack(pady=(0, 10), ipadx=6)
 
     def _descargar_era5(self, lat, lon, inicio, fin, con_espectro, con_viento):
         """Corre la descarga fuera del hilo de la GUI y deja el .nc listo para Crear."""

@@ -507,3 +507,9 @@ def test_gui_swan_expone_dialogo_y_handler():
     assert callable(gui_swan.dialogo_condicion)
     assert hasattr(gui_swan.VentanaSwan, "_tomar_borde_archivo")
     assert hasattr(gui_swan.VentanaSwan, "aplicar_borde")
+
+
+def test_app_tablero_importa_borde():
+    import app_tablero
+    import borde_oleaje, io_oleaje      # deben ser importables desde app_tablero
+    assert hasattr(app_tablero, "validar_inputs_era5")
