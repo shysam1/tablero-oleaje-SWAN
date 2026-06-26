@@ -118,6 +118,9 @@ def construir_swn(nombre, malla, batimetria, bordes, salidas=("Hs", "Tp", "Dir")
     L = ["$ Archivo SWAN generado por el Tablero de Oleaje",
          f"PROJ '{nombre}' '1'",
          "$",
+         "$ Direcciones en convención náutica (de dónde viene el oleaje).",
+         "SET NAUTICAL",
+         "$",
          "$*********** Malla y batimetría ***********",
          f"CGRID {m['xpc']} {m['ypc']} {m['alpc']} {m['xlenc']} {m['ylenc']} "
          f"{m['mxc']} {m['myc']} CIRCLE {m['mdc']} {m['flow']} {m['fhigh']} {m['msc']}",
