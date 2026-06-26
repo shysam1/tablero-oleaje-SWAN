@@ -468,3 +468,35 @@ def test_builder_emite_set_nautical():
     # el borde y el resto siguen intactos
     assert "BOUN SIDE W CCW CON PAR 2.0 10.0 270.0 15.0" in txt
     assert "CGRID 0.0 0.0 0.0 1000 1000 10 10 CIRCLE" in txt
+
+
+def test_aplicar_borde_rellena_formulario():
+    import gui_swan
+
+    class _Var:
+        def __init__(self): self.valor = None
+        def set(self, v): self.valor = str(v)
+
+    class _Log:
+        def insert(self, *a): pass
+        def see(self, *a): pass
+
+    class _Stub:
+        def __init__(self):
+            self.v = {"hs": _Var(), "per": _Var(), "dir": _Var()}
+            self.log = _Log()
+
+    stub = _Stub()
+    borde = {"hs": 8.0, "per": 14.0, "dir": 315.0, "descripcion": "máx"}
+    gui_swan.VentanaSwan.aplicar_borde(stub, borde)
+    assert stub.v["hs"].valor == "8"
+    assert stub.v["per"].valor == "14"
+    assert stub.v["dir"].valor == "315"
+
+    # Dir None → campo en blanco, sin reventar
+    stub2 = _Stub()
+    gui_swan.VentanaSwan.aplicar_borde(stub2, {"hs": 2.0, "per": None, "dir": None,
+                                               "descripcion": "x"})
+    assert stub2.v["hs"].valor == "2"
+    assert stub2.v["per"].valor == ""
+    assert stub2.v["dir"].valor == ""

@@ -166,6 +166,20 @@ class VentanaSwan(tk.Toplevel):
         self.boton_armar.pack(anchor="w", pady=12, ipadx=8, ipady=3)
         return f
 
+    def aplicar_borde(self, borde):
+        """
+        Rellena los campos Hs/Tp/Dir del formulario 'Armar y correr' con un borde
+        derivado de una serie (dict {hs, per, dir, descripcion}). Deja en blanco
+        las claves None y no toca lado/dispersión/malla/batimetría.
+        """
+        for clave in ("hs", "per", "dir"):
+            val = borde.get(clave)
+            self.v[clave].set("" if val is None else f"{val:g}")
+        self.log.insert("end", f"Borde aplicado — {borde.get('descripcion', '')}: "
+                        f"Hs={borde.get('hs')}, Tp={borde.get('per')}, "
+                        f"Dir={borde.get('dir')}\n")
+        self.log.see("end")
+
     # -------------------------------------------------------------- acciones
     def _elegir_dir(self, var):
         d = filedialog.askdirectory(title="Carpeta",
