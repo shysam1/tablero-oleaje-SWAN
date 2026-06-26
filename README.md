@@ -24,7 +24,11 @@ La ventana principal tiene un selector y dos acciones:
   - *Correr caso existente*: elige una carpeta con el/los `.swn` ya armados y los
     ejecuta (orden dominio grande → nido), con log en vivo y botón de cancelar;
   - *Armar y correr*: formulario (malla, batimetría, borde, salidas) que genera el
-    `.swn` y lo corre. Valida coherencia física antes de lanzar.
+    `.swn` y lo corre. Valida coherencia física antes de lanzar. El botón
+    **«Generar batimetría…»** crea el `.bot` desde la malla y la *Zona UTM*:
+    descarga batimetría global (GEBCO/ETOPO) de la zona, o usa un raster local
+    propio (SHOA u otro `.nc`); proyecta a UTM, interpola y rellena el campo de
+    batimetría. Avisa el rango de profundidad y el % de nodos en tierra.
 
 En *Armar y correr*, el botón **«Tomar borde de ERA5/serie…»** deriva la condición
 de borde (Hs/Tp/Dir) desde una serie de oleaje (un `.nc` de ERA5 o tu `.mat/.csv`):
@@ -61,6 +65,7 @@ Todas las salidas van a `salidas\<fuente>\`, una subcarpeta por archivo o corrid
 | `io_era5.py` | Descarga de oleaje por coordenada desde ERA5 (serie Hs/Tp/Dir + espectros 2D). |
 | `particion_espectral.py` · `productos_particion.py` | Partición sea/swell por familias (watershed) → serie de Hs por familia, tabla y espectro polar. |
 | `borde_oleaje.py` | Deriva la condición de borde SWAN (Hs/Tp/Dir) de una serie: periodo de retorno (Gumbel), máximo observado o reinante. |
+| `io_batimetria.py` | Genera el `.bot` de la malla: descarga batimetría (GEBCO/ETOPO) por coordenadas o usa un raster local, proyecta a UTM e interpola. |
 | `swan_runner.py` · `swan_builder.py` · `gui_swan.py` | Correr SWAN y armar el `.swn`. |
 | `rutas.py` · `config.py` | Carpeta de salidas · preferencias entre sesiones. |
 | `test_regresion.py` | Red de seguridad (valores conocidos). |
