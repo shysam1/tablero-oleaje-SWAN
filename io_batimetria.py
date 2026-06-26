@@ -30,3 +30,33 @@ def epsg_utm(zona):
     if not 1 <= numero <= 60:
         raise ValueError(f"Huso UTM fuera de rango: {numero}")
     return (32700 if m.group(2) == "S" else 32600) + numero
+
+
+_ALIAS_LAT = ("lat", "latitude", "y")
+_ALIAS_LON = ("lon", "longitude", "x")
+_ALIAS_ELEV = ("elevation", "altitude", "z")
+
+
+def _normalizar_raster(ds):
+    """
+    Deja el raster con dimensiones 'lat'/'lon' (ascendentes) y la variable de
+    elevación llamada 'elevation' (m, positivo hacia arriba), venga de ETOPO
+    (altitude/latitude/longitude) o GEBCO (elevation/lat/lon).
+    """
+    ren = {}
+    for cand in _ALIAS_LAT:
+        if cand in ds.variables and cand != "lat":
+            ren[cand] = "lat"
+            break
+    for cand in _ALIAS_LON:
+        if cand in ds.variables and cand != "lon":
+            ren[cand] = "lon"
+            break
+    var = next((v for v in _ALIAS_ELEV if v in ds.data_vars), None)
+    if var is None:
+        raise ValueError(
+            f"El raster no tiene variable de elevación reconocible (busqué {_ALIAS_ELEV}).")
+    if var != "elevation":
+        ren[var] = "elevation"
+    ds = ds.rename(ren)
+    return ds[["elevation"]].sortby("lat").sortby("lon")

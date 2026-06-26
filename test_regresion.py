@@ -526,3 +526,22 @@ def test_epsg_utm_parsea_zona():
     assert io_batimetria.epsg_utm(" 18s ") == 32718      # tolerante a espacios/caso
     with pytest.raises(ValueError):
         io_batimetria.epsg_utm("ABC")
+
+
+def test_normalizar_raster_etopo_y_gebco():
+    import xarray as xr
+    lat = np.array([-32.9, -33.0, -33.1])      # descendente (como ETOPO)
+    lon = np.array([-71.8, -71.7, -71.6])
+    alt = np.arange(9).reshape(3, 3).astype(float)
+
+    etopo = xr.Dataset({"altitude": (("latitude", "longitude"), alt)},
+                       coords={"latitude": lat, "longitude": lon})
+    out = io_batimetria._normalizar_raster(etopo)
+    assert "elevation" in out.data_vars
+    assert "lat" in out.dims and "lon" in out.dims
+    assert float(out["lat"][0]) < float(out["lat"][-1])    # ordenado ascendente
+
+    gebco = xr.Dataset({"elevation": (("lat", "lon"), alt)},
+                       coords={"lat": lat[::-1], "lon": lon})
+    out2 = io_batimetria._normalizar_raster(gebco)
+    assert "elevation" in out2.data_vars and "lat" in out2.dims
