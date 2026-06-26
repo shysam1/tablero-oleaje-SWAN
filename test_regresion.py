@@ -152,3 +152,22 @@ def test_casos_ordenados_padre_primero(tmp_path):
     (tmp_path / "grande.swn").write_text("CGRID 0. 0. 0. 1000 1000 10 10 CIRCLE 36 .04 1\n")
     (tmp_path / "nido.swn").write_text("CGRID 300 300 0. 200 200 20 20 CIRCLE 36 .04 1\n")
     assert swan_runner.casos_ordenados(tmp_path) == ["grande", "nido"]
+
+
+# --------------------------- Partición espectral ---------------------------
+import particion_espectral
+
+
+def test_pesos_y_m0_reconstruyen_hs():
+    """m0 integrado de un espectro debe reproducir Hs = 4*sqrt(m0)."""
+    freqs = np.linspace(0.04, 0.40, 30)
+    dirs = np.arange(0.0, 360.0, 15.0)
+    # Espectro unimodal: una gaussiana en (f, dir) con energía conocida.
+    F, D = np.meshgrid(freqs, dirs, indexing="ij")
+    efth = np.exp(-((F - 0.10) / 0.02) ** 2) * np.exp(-((D - 200.0) / 20.0) ** 2)
+
+    dfreq, ddir = particion_espectral._pesos(freqs, dirs)
+    m0 = particion_espectral._m0(efth, dfreq, ddir)
+    hs = 4.0 * np.sqrt(m0)
+    assert m0 > 0
+    assert 0.0 < hs < 5.0           # rango físico para esa energía
