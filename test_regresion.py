@@ -383,3 +383,12 @@ def test_espectro_particionado_registrado_en_swan():
     item = next(i for i in informe if i["nombre"] == "Espectro particionado")
     assert item["disponible"] is True
     assert item["proyeccion"] == "polar"
+
+
+def test_validar_inputs_era5_convierte_y_valida():
+    import app_tablero
+    lat, lon = app_tablero.validar_inputs_era5("-37.0", "-73.5",
+                                               "2024-07-28", "2024-07-29")
+    assert (lat, lon) == pytest.approx((-37.0, -73.5))
+    with pytest.raises(ValueError):
+        app_tablero.validar_inputs_era5("abc", "-73.5", "2024-07-28", "2024-07-29")

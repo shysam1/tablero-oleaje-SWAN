@@ -28,6 +28,19 @@ import video_swan
 import io_swan_nonst
 import gui_swan
 import config
+import io_era5
+import rutas
+
+
+def validar_inputs_era5(lat_txt, lon_txt, inicio, fin):
+    """Convierte y valida lat/lon; devuelve (lat, lon). Lanza ValueError si no sirven."""
+    lat = float(lat_txt)
+    lon = float(lon_txt)
+    if not (-90.0 <= lat <= 90.0 and -180.0 <= lon <= 180.0):
+        raise ValueError("Latitud/longitud fuera de rango.")
+    if not (inicio and fin):
+        raise ValueError("Faltan fechas de inicio/fin.")
+    return lat, lon
 
 
 class AppTablero(tk.Tk):
@@ -72,6 +85,8 @@ class AppTablero(tk.Tk):
         self.boton_crear.pack(side="left", ipadx=10, ipady=4)
         ttk.Button(fila_b, text="Procesar SWAN…", command=self._abrir_swan).pack(
             side="left", padx=(8, 0), ipadx=6, ipady=4)
+        ttk.Button(fila_b, text="Descargar ERA5…", command=self._abrir_era5).pack(
+            side="left", padx=(8, 0), ipadx=6, ipady=4)
 
         # Campo avanzado: offset UTM del dominio grande SWAN (sólo mapas/videos).
         fila_utm = ttk.Frame(marco)
@@ -97,6 +112,64 @@ class AppTablero(tk.Tk):
     def _abrir_swan(self):
         """Abre la ventana de corrida SWAN (el paso previo a graficar)."""
         gui_swan.VentanaSwan(self)
+
+    def _abrir_era5(self):
+        """Ventana de descarga ERA5 por coordenada (serie + espectro opcional)."""
+        win = tk.Toplevel(self)
+        win.title("Descargar ERA5 por coordenada")
+        win.geometry("360x300")
+        campos = {}
+        for etiqueta, clave, valor in [
+                ("Latitud", "lat", "-37.0"), ("Longitud", "lon", "-73.5"),
+                ("Inicio (YYYY-MM-DD)", "inicio", "2024-07-28"),
+                ("Fin (YYYY-MM-DD)", "fin", "2024-07-29")]:
+            fila = ttk.Frame(win); fila.pack(fill="x", padx=10, pady=4)
+            ttk.Label(fila, text=etiqueta, width=20).pack(side="left")
+            var = tk.StringVar(value=valor)
+            ttk.Entry(fila, textvariable=var).pack(side="left", fill="x", expand=True)
+            campos[clave] = var
+        espectro = tk.BooleanVar(value=True)
+        viento = tk.BooleanVar(value=True)
+        ttk.Checkbutton(win, text="Incluir espectros 2D", variable=espectro).pack(
+            anchor="w", padx=10)
+        ttk.Checkbutton(win, text="Incluir viento (clasificación sea/swell)",
+                        variable=viento).pack(anchor="w", padx=10)
+
+        def lanzar():
+            try:
+                lat, lon = validar_inputs_era5(
+                    campos["lat"].get(), campos["lon"].get(),
+                    campos["inicio"].get(), campos["fin"].get())
+            except ValueError as e:
+                messagebox.showerror("Datos inválidos", str(e)); return
+            win.destroy()
+            self.estado.config(text="Descargando ERA5…", foreground="#d18616")
+            self.salida.delete("1.0", "end")
+            threading.Thread(target=self._descargar_era5, daemon=True,
+                             args=(lat, lon, campos["inicio"].get(),
+                                   campos["fin"].get(), espectro.get(),
+                                   viento.get())).start()
+
+        ttk.Button(win, text="Descargar", command=lanzar).pack(pady=12, ipadx=10)
+
+    def _descargar_era5(self, lat, lon, inicio, fin, con_espectro, con_viento):
+        """Corre la descarga fuera del hilo de la GUI y deja el .nc listo para Crear."""
+        buffer = io.StringIO()
+        try:
+            with redirect_stdout(buffer):
+                ds = io_era5.descargar_serie(lat, lon, inicio, fin,
+                                             incluir_viento=con_viento)
+                print(f"Serie ERA5 descargada: {ds.sizes.get('time', 0)} pasos.")
+                if con_espectro:
+                    esp = io_era5.descargar_espectro(lat, lon, inicio, fin)
+                    print(f"Espectro ERA5 descargado: {esp.sizes.get('time', 0)} pasos.")
+            carpeta = rutas.carpeta_salida(io_era5._nombre_fuente(lat, lon, "serie"))
+            nc_serie = carpeta / "era5_serie.nc"
+            # Dejar el .nc seleccionado para que el botón Crear genere el tablero.
+            self.after(0, self.ruta_datos.set, str(nc_serie))
+            self.after(0, self._exito, buffer.getvalue(), str(carpeta))
+        except Exception:
+            self.after(0, self._error, buffer.getvalue() + "\n" + traceback.format_exc())
 
     def _elegir_archivo(self):
         ruta = filedialog.askopenfilename(
