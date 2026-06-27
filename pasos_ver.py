@@ -70,10 +70,11 @@ class PasoTipo(asistente.Paso):
         fila = ttk.Frame(self); fila.pack(fill="x", pady=(10, 0))
         ttk.Label(fila, text="Offset UTM grande (avanzado):",
                   foreground="#888").pack(side="left")
-        self.utm_x = tk.StringVar(value="620494")
+        self.utm_x = tk.StringVar(value="620494")    # default Coronel (Golfo de Arauco)
         self.utm_y = tk.StringVar(value="5876451")
         ttk.Entry(fila, textvariable=self.utm_x, width=10).pack(side="left", padx=(4, 0))
         ttk.Entry(fila, textvariable=self.utm_y, width=10).pack(side="left", padx=(2, 0))
+        self.nonst = False                 # se actualiza en entrar()
 
     def entrar(self, contexto):
         carpeta = Path(contexto["carpeta"])
@@ -126,8 +127,8 @@ class PasoGenerar(asistente.Paso):
             self.wizard.log.insert("end", f"Resultado: {res}\n")
             try:
                 os.startfile(str(res))
-            except Exception:
-                pass
+            except Exception as e:
+                self.wizard.log.insert("end", f"No se pudo abrir {res}: {e}\n")
 
         self.wizard.tarea(trabajo, al_terminar)
 
