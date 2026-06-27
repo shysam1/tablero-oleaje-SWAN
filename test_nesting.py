@@ -97,3 +97,22 @@ def test_escribir_par_anidado_punto_espectral_va_al_nido(tmp_path):
         MALLA_N, {"archivo": "n.bot"}, punto_espectral=pe)
     assert "POINTS 'SpecOut' 42000 37000" in rn.read_text()
     assert "POINTS" not in rg.read_text()
+
+
+def test_casos_ordenados_nido_va_despues(tmp_path):
+    (tmp_path / "grande.swn").write_text(
+        "CGRID 0 0 0 100 100 10 10 Circle 180 .04 1\nCOMPUTE\nSTOP\n")
+    (tmp_path / "chico.swn").write_text(
+        "CGRID 5 5 0 50 50 10 10 Circle 180 .04 1\n"
+        "BOU NEST 'nest1' CLOSED\nCOMPUTE\nSTOP\n")
+    orden = swan_runner.casos_ordenados(str(tmp_path))
+    assert orden.index("grande") < orden.index("chico")
+
+
+def test_es_nido_detecta_bou_nest(tmp_path):
+    p = tmp_path / "n.swn"
+    p.write_text("CGRID 5 5 0 50 50 10 10\nBOU NEST 'x' CLOSED\nCOMPUTE\n")
+    assert swan_runner._es_nido(p) is True
+    p2 = tmp_path / "g.swn"
+    p2.write_text("CGRID 0 0 0 100 100 10 10\nBOUN SIDE W CCW CON PAR 3 12 290 20\n")
+    assert swan_runner._es_nido(p2) is False

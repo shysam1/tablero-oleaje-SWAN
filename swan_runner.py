@@ -6,9 +6,10 @@ Toma una carpeta con un caso SWAN ya armado (uno o varios `.swn` + batimetría
 instalación de SWAN. Deja las salidas BLOCK (`.txt`/`.mat`) en la misma carpeta,
 listas para el flujo de tableros/videos.
 
-Maneja el caso anidado: corre primero el dominio grande (CGRID con origen local
-0,0) y después los anidados, que dependen del archivo de nesting que el grande
-genera (NESTOUT). Reporta el avance línea a línea para mostrarlo en la GUI.
+Maneja el caso anidado: corre primero los dominios que alimentan un nesting y
+después los anidados (identificados por BOU NEST / BOUN NEST), que dependen del
+archivo de nesting que el dominio grande genera (NESTOUT). Reporta el avance
+línea a línea para mostrarlo en la GUI.
 """
 
 from pathlib import Path
@@ -17,7 +18,6 @@ import subprocess
 import sys
 import threading
 
-from io_swan import _leer_cgrid
 import prioridad
 
 
@@ -26,20 +26,30 @@ def swan_disponible():
     return shutil.which("swanrun") is not None or shutil.which("swan") is not None
 
 
+def _es_nido(ruta_swn):
+    """True si el .swn toma su contorno de un nesting (BOU NEST / BOUN NEST)."""
+    for linea in Path(ruta_swn).read_text().splitlines():
+        s = linea.strip()
+        if s.startswith("$"):
+            continue
+        toks = s.upper().split()
+        if len(toks) >= 2 and toks[0] in ("BOU", "BOUN") and toks[1] == "NEST":
+            return True
+    return False
+
+
 def casos_ordenados(carpeta):
     """
-    Nombres de caso (.swn sin extensión) en orden de ejecución: el dominio grande
-    (CGRID con origen local 0,0) primero, los anidados después.
+    Nombres de caso (.swn sin extensión) en orden de ejecución: los dominios que
+    alimentan un nesting primero, los anidados (BOU NEST) después.
     """
     swns = sorted(Path(carpeta).glob("*.swn"))
 
     def clave(s):
         try:
-            g = _leer_cgrid(s)
-            anidado = g["x0_local"] != 0 or g["y0_local"] != 0
+            return (_es_nido(s), s.name)
         except Exception:
-            anidado = True                 # sin CGRID legible: al final
-        return (anidado, s.name)
+            return (True, s.name)        # ilegible: al final
 
     return [s.stem for s in sorted(swns, key=clave)]
 
