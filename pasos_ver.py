@@ -98,7 +98,8 @@ class PasoGenerar(asistente.Paso):
         super().__init__(master)
         ttk.Label(self, text="Genera el producto y se abrirá al terminar.").pack(
             anchor="w")
-        self.boton = ttk.Button(self, text="Generar", command=self._generar)
+        self.boton = ttk.Button(self, text="Generar", style="Primary.TButton",
+                                  command=self._generar)
         self.boton.pack(anchor="w", pady=(8, 0))
         self.resultado = None
 

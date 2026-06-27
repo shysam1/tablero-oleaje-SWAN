@@ -11,6 +11,8 @@ import traceback
 import tkinter as tk
 from tkinter import ttk, messagebox, scrolledtext
 
+import estilo
+
 
 class MaquinaWizard:
     """
@@ -79,7 +81,7 @@ class Paso(ttk.Frame):
     titulo = "Paso"
 
     def __init__(self, master):
-        super().__init__(master, padding=4)
+        super().__init__(master, padding=4, style="Card.TFrame")
         self.wizard = None
 
     def entrar(self, contexto):
@@ -103,54 +105,68 @@ class Wizard(ttk.Frame):
     """
 
     def __init__(self, master, titulo, clases_paso, al_inicio):
-        super().__init__(master, padding=12)
+        super().__init__(master, padding=16)
         self.titulo_txt = titulo
         self.al_inicio = al_inicio
         self.contexto = {}
         self._tarea_activa = False
-        self.pasos = [c(self) for c in clases_paso]
+        self._clases_paso = clases_paso
+        self.pasos = []
+        self.maquina = None
+        self._construir()
+        self.pasos = [c(self.area) for c in self._clases_paso]
         for p in self.pasos:
             p.wizard = self
+            p.grid(row=0, column=0, sticky="nsew")
+        titulos = [p.titulo for p in self.pasos]
+        self.stepper = estilo.Stepper(self, titulos)
+        self.stepper.pack(fill="x", pady=(10, 6), after=self._titulo_w)
         self.maquina = MaquinaWizard(self.pasos, self.contexto)
-        self._construir()
-        self.maquina.entrar()          # entra al primer paso (las transiciones
-        self._mostrar_actual()         # posteriores entran vía avanzar/retroceder)
+        self.maquina.entrar()
+        self._mostrar_actual()
 
     # ------------------------------------------------------------------ UI
     def _construir(self):
-        ttk.Label(self, text=self.titulo_txt,
-                  font=("Segoe UI", 15, "bold")).pack(anchor="w")
-        self.barra_pasos = ttk.Label(self, foreground="#555")
-        self.barra_pasos.pack(anchor="w", pady=(0, 8))
+        self._titulo_w = ttk.Label(self, text=self.titulo_txt,
+                                   style="WizardTitulo.TLabel")
+        self._titulo_w.pack(anchor="w")
 
-        # Área donde se apilan los pasos (uno visible a la vez con tkraise).
-        self.area = ttk.Frame(self)
+        self.barra_pasos = ttk.Label(self, style="Muted.TLabel")
+        self.barra_pasos.pack(anchor="w", pady=(0, 10))
+
+        marco_paso = estilo.PanelTarjeta(self)
+        marco_paso.pack(fill="both", expand=True)
+        self.area = tk.Frame(marco_paso.cuerpo, bg=estilo.PALETA["fondo_tarjeta"])
         self.area.pack(fill="both", expand=True)
         self.area.rowconfigure(0, weight=1)
         self.area.columnconfigure(0, weight=1)
-        for p in self.pasos:
-            p.grid(in_=self.area, row=0, column=0, sticky="nsew")
 
         # Estado + progreso + log comunes a todos los pasos.
         fila_e = ttk.Frame(self)
         fila_e.pack(fill="x", pady=(8, 0))
-        self.estado = ttk.Label(fila_e, text="Listo.", foreground="#1f6feb")
+        self.estado = ttk.Label(fila_e, text="Listo.", style="EstadoListo.TLabel")
         self.estado.pack(side="left")
         self.progreso = ttk.Progressbar(self, mode="determinate", maximum=100)
         self.progreso.pack(fill="x", pady=(4, 0))
-        self.log = scrolledtext.ScrolledText(self, height=9, font=("Consolas", 9))
+        self.log = scrolledtext.ScrolledText(
+            self, height=7, font=("Consolas", 9),
+            bg="#fafafa", fg=estilo.PALETA["texto"], relief="flat",
+            highlightthickness=1, highlightbackground=estilo.PALETA["borde_suave"])
         self.log.pack(fill="both", expand=True, pady=(6, 0))
 
         # Botones de navegación.
         fila_b = ttk.Frame(self)
         fila_b.pack(fill="x", pady=(8, 0))
         self.boton_inicio = ttk.Button(fila_b, text="← Inicio",
+                                       style="Secondary.TButton",
                                        command=self._volver_inicio)
         self.boton_inicio.pack(side="left")
         self.boton_sig = ttk.Button(fila_b, text="Siguiente →",
+                                    style="Primary.TButton",
                                     command=self._siguiente)
         self.boton_sig.pack(side="right")
-        self.boton_atras = ttk.Button(fila_b, text="Atrás", command=self._atras)
+        self.boton_atras = ttk.Button(fila_b, text="Atrás", style="Secondary.TButton",
+                                      command=self._atras)
         self.boton_atras.pack(side="right", padx=(0, 6))
 
     def _mostrar_actual(self):
@@ -158,6 +174,7 @@ class Wizard(ttk.Frame):
         # sólo se renderiza, para no dispararlo dos veces por transición.
         p = self.maquina.paso_actual()
         p.tkraise()
+        self.stepper.actualizar(self.maquina.indice)
         self.barra_pasos.config(
             text=f"Paso {self.maquina.indice + 1} de {len(self.pasos)}: {p.titulo}")
         self.boton_atras.config(
@@ -226,7 +243,8 @@ class Wizard(ttk.Frame):
         if not self.winfo_exists():
             return
         self.progreso.config(mode="determinate", maximum=max(n, 1), value=i + 1)
-        self.estado.config(text=f"Procesando… {i + 1}/{n}", foreground="#d18616")
+        self.estado.config(text=f"Procesando… {i + 1}/{n}")
+        estilo.configurar_estado(self.estado, "procesando")
 
     def _bloquear(self, activo):
         estado = "disabled" if activo else "normal"
@@ -236,7 +254,8 @@ class Wizard(ttk.Frame):
             self.boton_atras.config(state="disabled")
             self.progreso.config(mode="indeterminate")
             self.progreso.start(12)
-            self.estado.config(text="Procesando…", foreground="#d18616")
+            self.estado.config(text="Procesando…")
+            estilo.configurar_estado(self.estado, "procesando")
         else:
             # Al desbloquear, «Atrás» respeta la posición real (off en el primer paso).
             self.boton_atras.config(
@@ -251,8 +270,10 @@ class Wizard(ttk.Frame):
         self._bloquear(False)
         if error:
             self.log.insert("end", error + "\n")
-            self.estado.config(text="Error. Revisa el detalle.", foreground="#d1242f")
+            self.estado.config(text="Error. Revisa el detalle.")
+            estilo.configurar_estado(self.estado, "error")
         else:
-            self.estado.config(text="Listo.", foreground="#1f6feb")
+            self.estado.config(text="Listo.")
+            estilo.configurar_estado(self.estado, "listo")
         if al_terminar:
             al_terminar(resultado)

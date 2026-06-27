@@ -21,6 +21,7 @@ from tkinter import filedialog, messagebox, ttk, scrolledtext
 import swan_runner
 import swan_builder
 import config
+import estilo
 import io_oleaje
 import borde_oleaje
 import io_batimetria
@@ -111,6 +112,7 @@ class VentanaSwan(tk.Toplevel):
         self.title("Procesar SWAN")
         self.geometry("720x640")
         self.minsize(640, 560)
+        self.configure(bg=estilo.PALETA["fondo"])
         self._proc = None                  # proceso SWAN en curso (para cancelar)
         self._cancelar = threading.Event()
         self._construir()
@@ -158,10 +160,10 @@ class VentanaSwan(tk.Toplevel):
         marco.pack(fill="both", expand=True)
 
         ttk.Label(marco, text="Procesar SWAN",
-                  font=("Segoe UI", 14, "bold")).pack(anchor="w")
+                  style="WizardTitulo.TLabel").pack(anchor="w")
         ttk.Label(marco, text="Corre el modelo SWAN y deja la carpeta lista para "
-                  "graficar con «Crear».", foreground="#555").pack(anchor="w",
-                                                                   pady=(0, 8))
+                  "graficar con «Crear».", style="Muted.TLabel").pack(
+                      anchor="w", pady=(0, 8))
 
         nb = ttk.Notebook(marco)
         self.nb = nb
@@ -172,7 +174,7 @@ class VentanaSwan(tk.Toplevel):
         # Estado + progreso + cancelar + log, compartidos por ambas pestañas.
         fila_e = ttk.Frame(marco)
         fila_e.pack(fill="x", pady=(8, 0))
-        self.estado = ttk.Label(fila_e, text="Listo.", foreground="#1f6feb")
+        self.estado = ttk.Label(fila_e, text="Listo.", style="EstadoListo.TLabel")
         self.estado.pack(side="left")
         self.boton_cancelar = ttk.Button(fila_e, text="Cancelar",
                                          command=self._cancelar_corrida,
@@ -180,7 +182,10 @@ class VentanaSwan(tk.Toplevel):
         self.boton_cancelar.pack(side="right")
         self.progreso = ttk.Progressbar(marco, mode="determinate", maximum=100)
         self.progreso.pack(fill="x", pady=(4, 0))
-        self.log = scrolledtext.ScrolledText(marco, height=14, font=("Consolas", 9))
+        self.log = scrolledtext.ScrolledText(
+            marco, height=14, font=("Consolas", 9),
+            bg="#fafafa", fg=estilo.PALETA["texto"], relief="flat",
+            highlightthickness=1, highlightbackground=estilo.PALETA["borde_suave"])
         self.log.pack(fill="both", expand=True, pady=(8, 0))
 
     def _pestana_existente(self, nb):
@@ -192,11 +197,12 @@ class VentanaSwan(tk.Toplevel):
             side="left", fill="x", expand=True)
         ttk.Button(fila, text="Carpeta…",
                    command=self._elegir_carpeta_exist).pack(side="left", padx=(6, 0))
-        self.casos_lbl = ttk.Label(f, text="", foreground="#555")
+        self.casos_lbl = ttk.Label(f, text="", style="Muted.TLabel")
         self.casos_lbl.pack(anchor="w", pady=(6, 0))
         self.boton_correr = ttk.Button(f, text="Correr SWAN",
+                                       style="Primary.TButton",
                                        command=self._correr_existente)
-        self.boton_correr.pack(anchor="w", pady=10, ipadx=8, ipady=3)
+        self.boton_correr.pack(anchor="w", pady=10)
         return f
 
     def _pestana_nuevo(self, nb):
@@ -286,8 +292,9 @@ class VentanaSwan(tk.Toplevel):
                    command=self._tomar_borde_archivo).pack(anchor="w", pady=(8, 0))
 
         self.boton_armar = ttk.Button(f, text="Generar .swn y correr",
+                                      style="Primary.TButton",
                                       command=self._armar_y_correr)
-        self.boton_armar.pack(anchor="w", pady=12, ipadx=8, ipady=3)
+        self.boton_armar.pack(anchor="w", pady=12)
         return f
 
     def aplicar_borde(self, borde):
@@ -439,8 +446,9 @@ class VentanaSwan(tk.Toplevel):
         # SWAN no anuncia cuántas iteraciones hará, así que el avance dentro de un
         # caso no es un % fiable: la barra va en modo indeterminado (gira) y aquí
         # sólo se actualiza el texto del caso en curso.
-        self._marshal(lambda: self.estado.config(
-            text=f"Corriendo caso {min(i + 1, n)}/{n}…", foreground="#d18616"))
+        self._marshal(lambda: (
+            self.estado.config(text=f"Corriendo caso {min(i + 1, n)}/{n}…"),
+            estilo.configurar_estado(self.estado, "procesando")))
 
     def _bloquear(self, activo):
         estado = "disabled" if activo else "normal"
@@ -463,7 +471,8 @@ class VentanaSwan(tk.Toplevel):
                 self._proc.terminate()
             except Exception:
                 pass
-        self.estado.config(text="Cancelando…", foreground="#d1242f")
+        self.estado.config(text="Cancelando…")
+        estilo.configurar_estado(self.estado, "error")
 
     def _correr_existente(self):
         carpeta = self.carpeta_exist.get().strip()
@@ -529,7 +538,8 @@ class VentanaSwan(tk.Toplevel):
         self._cancelar.clear()
         self._proc = None
         self._bloquear(True)               # arranca la barra indeterminada
-        self.estado.config(text="Procesando…", foreground="#d18616")
+        self.estado.config(text="Procesando…")
+        estilo.configurar_estado(self.estado, "procesando")
         threading.Thread(target=self._procesar, args=(carpeta,),
                          daemon=True).start()
 
@@ -548,13 +558,14 @@ class VentanaSwan(tk.Toplevel):
 
     def _cancelado_fin(self):
         self._bloquear(False)              # detiene y resetea la barra
-        self.estado.config(text="Corrida cancelada.", foreground="#d1242f")
+        self.estado.config(text="Corrida cancelada.")
+        estilo.configurar_estado(self.estado, "error")
 
     def _terminar(self, ok, nuevas, carpeta):
         self._bloquear(False)              # detiene y resetea la barra
         if ok:
-            self.estado.config(text=f"Listo: {len(nuevas)} salida(s) generada(s).",
-                               foreground="#1f6feb")
+            self.estado.config(text=f"Listo: {len(nuevas)} salida(s) generada(s).")
+            estilo.configurar_estado(self.estado, "listo")
             if messagebox.askyesno(
                     "SWAN terminó",
                     "La corrida terminó correctamente.\n\n¿Abrir la carpeta de "
@@ -564,12 +575,13 @@ class VentanaSwan(tk.Toplevel):
                 except Exception:
                     pass
         else:
-            self.estado.config(text="SWAN terminó con avisos; revisa el log/.prt.",
-                               foreground="#d1242f")
+            self.estado.config(text="SWAN terminó con avisos; revisa el log/.prt.")
+            estilo.configurar_estado(self.estado, "error")
 
     def _error(self, mensaje):
         self._bloquear(False)              # detiene y resetea la barra
-        self.estado.config(text="Error al correr SWAN.", foreground="#d1242f")
+        self.estado.config(text="Error al correr SWAN.")
+        estilo.configurar_estado(self.estado, "error")
         self.log.insert("end", mensaje + "\n")
         messagebox.showerror("Error", "No se pudo correr SWAN. Revisa el detalle.")
 

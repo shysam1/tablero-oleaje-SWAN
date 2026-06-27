@@ -1,0 +1,40 @@
+---
+description: Obligatorio leer y actualizar HANDOFF.md en cada sesión con cambios relevantes
+alwaysApply: true
+---
+
+# Bitácora HANDOFF (obligatorio)
+
+Este proyecto se desarrolla en paralelo (Cursor + Claude Code). **`HANDOFF.md` es la fuente de verdad** entre agentes.
+
+## Al empezar a trabajar
+
+1. **Leer** `HANDOFF.md` (al menos «Registro de cambios» y la sección que toque al task).
+2. No asumir arquitectura ni lanzadores sin contrastar con HANDOFF.
+
+## Al terminar cambios relevantes (antes de dar por cerrada la tarea)
+
+**Actualizar `HANDOFF.md` siempre** que hayas hecho algo que otro agente o tú en otra sesión necesitaría saber:
+
+- Nueva funcionalidad, refactor, cambio de GUI o lanzadores
+- Nuevos archivos/módulos o rutas de entrada (`app_web.py`, `.bat`, `.lnk`, etc.)
+- Dependencias nuevas (`pip install …`)
+- Bugs corregidos con impacto en flujo o tests
+- Decisiones de diseño (por qué X y no Y)
+
+**No hace falta entrada** si solo respondiste una pregunta, revisaste código sin tocar nada, o el cambio fue trivial (typo en comentario).
+
+## Formato de cada entrada (arriba del todo, más reciente primero)
+
+```markdown
+### YYYY-MM-DD · Título breve (agente)
+*Qué/por qué:* …
+*Archivos:* … (si aplica)
+*Notas:* … (tests, pendientes, trampas)
+```
+
+Actualizar también las secciones estáticas de HANDOFF si quedaron **desactualizadas** (p. ej. «GUI + lanzadores», «Entorno»).
+
+## Regla de cierre
+
+No consideres la tarea **terminada** si hubo cambios relevantes y HANDOFF no refleja el estado actual — salvo que el usuario diga explícitamente que no lo actualices.

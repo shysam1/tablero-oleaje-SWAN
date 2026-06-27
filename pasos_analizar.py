@@ -59,6 +59,7 @@ class PasoOrigen(asistente.Paso):
         ttk.Checkbutton(self.marco_era5, text="Incluir viento (sea/swell)",
                         variable=self.viento).pack(anchor="w")
         self.boton_desc = ttk.Button(self.marco_era5, text="Descargar serie ERA5",
+                                     style="Primary.TButton",
                                      command=self._descargar)
         self.boton_desc.pack(anchor="w", pady=(4, 0))
         self.nc_descargado = None
@@ -132,10 +133,15 @@ class PasoRevision(asistente.Paso):
         super().__init__(master)
         self.texto = tk.Text(self, height=14, font=("Consolas", 9), wrap="word")
         self.texto.pack(fill="both", expand=True)
+        # Estado que decide si se puede avanzar (lo fija entrar()).
+        self._listo = False
+        self._motivo = "Revisa los datos antes de continuar."
 
     def entrar(self, contexto):
         self.texto.config(state="normal")
         self.texto.delete("1.0", "end")
+        self._listo = False
+        self._motivo = "Revisa los datos antes de continuar."
         try:
             ds = io_oleaje.cargar(contexto["ruta_datos"])
             variables = ", ".join(ds.data_vars) or "(ninguna)"
@@ -152,16 +158,30 @@ class PasoRevision(asistente.Paso):
                     self.texto.insert("end",
                                       f"  [!! ] {r['nombre']}: {r['n_falla']}/{r['n_total']}\n")
             self.texto.insert("end", "\nProductos que se podrán generar:\n")
+            hay_producto = False
             for it in productos.evaluar(ds):
                 if it["disponible"]:
+                    hay_producto = True
                     self.texto.insert("end", f"  ✓ {it['nombre']}\n")
                 else:
                     self.texto.insert("end",
                                       f"  ✗ {it['nombre']} (faltan: {', '.join(it['faltan'])})\n")
+            # Solo se avanza si los datos cargaron y dejan generar algún producto;
+            # de lo contrario tablero_oleaje lanzaría ValueError (sin productos).
+            if hay_producto:
+                self._listo = True
+            else:
+                self._motivo = ("Los datos no permiten generar ningún producto. "
+                                "Vuelve atrás y elige otro origen.")
         except Exception as e:
             self.texto.insert("end", f"Error al analizar el archivo:\n{e}\n")
+            self._motivo = ("No se pudieron cargar los datos. "
+                            "Vuelve atrás y corrige el origen.")
         finally:
             self.texto.config(state="disabled")
+
+    def validar(self):
+        return self._listo, self._motivo
 
 
 class PasoTablero(asistente.Paso):
@@ -171,7 +191,7 @@ class PasoTablero(asistente.Paso):
         super().__init__(master)
         ttk.Label(self, text="Genera el tablero de curvas y se abre al terminar."
                   ).pack(anchor="w")
-        ttk.Button(self, text="Generar tablero",
+        ttk.Button(self, text="Generar tablero", style="Primary.TButton",
                    command=self._generar).pack(anchor="w", pady=(8, 0))
         self.resultado = None
 

@@ -1,0 +1,645 @@
+<!DOCTYPE html>
+<html lang="es">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1" />
+  <title>Tablero de Oleaje — Preview estilo Mac</title>
+  <style>
+    :root {
+      --mac-bg: #f5f5f7;
+      --mac-sidebar: #ececec;
+      --mac-card: rgba(255, 255, 255, 0.82);
+      --mac-text: #1d1d1f;
+      --mac-muted: #6e6e73;
+      --mac-blue: #007aff;
+      --mac-blue-hover: #0066d6;
+      --mac-teal: #30b0c7;
+      --mac-purple: #af52de;
+      --mac-border: rgba(0, 0, 0, 0.08);
+      --mac-shadow: 0 2px 16px rgba(0, 0, 0, 0.08), 0 0 1px rgba(0, 0, 0, 0.06);
+      --mac-radius: 12px;
+      --mac-font: -apple-system, BlinkMacSystemFont, "SF Pro Display", "SF Pro Text",
+                  "Helvetica Neue", sans-serif;
+    }
+
+    * { box-sizing: border-box; margin: 0; padding: 0; }
+
+    body {
+      min-height: 100vh;
+      display: flex;
+      align-items: center;
+      justify-content: center;
+      padding: 32px 16px;
+      font-family: var(--mac-font);
+      background:
+        radial-gradient(ellipse 80% 60% at 20% 10%, #d4e8ff 0%, transparent 55%),
+        radial-gradient(ellipse 70% 50% at 85% 80%, #e8dff5 0%, transparent 50%),
+        linear-gradient(160deg, #e8ecf4 0%, #f5f5f7 40%, #eef1f6 100%);
+      color: var(--mac-text);
+      -webkit-font-smoothing: antialiased;
+    }
+
+    .preview-note {
+      position: fixed;
+      top: 12px;
+      left: 50%;
+      transform: translateX(-50%);
+      background: rgba(0, 0, 0, 0.72);
+      color: #fff;
+      font-size: 12px;
+      padding: 6px 14px;
+      border-radius: 20px;
+      backdrop-filter: blur(12px);
+      z-index: 10;
+      letter-spacing: 0.01em;
+    }
+
+    .window {
+      width: min(920px, 100%);
+      background: var(--mac-bg);
+      border-radius: 14px;
+      box-shadow:
+        0 24px 80px rgba(0, 0, 0, 0.18),
+        0 0 0 0.5px rgba(0, 0, 0, 0.12);
+      overflow: hidden;
+      transition: width 0.35s ease;
+    }
+
+    .window.narrow { width: min(420px, 100%); }
+
+    .titlebar {
+      height: 52px;
+      display: flex;
+      align-items: center;
+      padding: 0 16px;
+      background: linear-gradient(180deg, #fafafa 0%, #f0f0f2 100%);
+      border-bottom: 0.5px solid var(--mac-border);
+      position: relative;
+    }
+
+    .traffic {
+      display: flex;
+      gap: 8px;
+    }
+
+    .traffic span {
+      width: 12px;
+      height: 12px;
+      border-radius: 50%;
+      display: block;
+      box-shadow: inset 0 -1px 1px rgba(0,0,0,0.12);
+    }
+    .traffic .close  { background: #ff5f57; }
+    .traffic .min    { background: #febc2e; }
+    .traffic .max    { background: #28c840; }
+
+    .titlebar h1 {
+      position: absolute;
+      left: 50%;
+      transform: translateX(-50%);
+      font-size: 13px;
+      font-weight: 600;
+      color: var(--mac-muted);
+      letter-spacing: -0.01em;
+    }
+
+    .toolbar {
+      display: flex;
+      gap: 8px;
+      margin-left: auto;
+    }
+
+    .toolbar button {
+      font-family: inherit;
+      font-size: 11px;
+      padding: 4px 10px;
+      border-radius: 6px;
+      border: 0.5px solid var(--mac-border);
+      background: #fff;
+      color: var(--mac-muted);
+      cursor: pointer;
+    }
+    .toolbar button.active {
+      background: var(--mac-blue);
+      color: #fff;
+      border-color: transparent;
+    }
+
+    .content {
+      display: grid;
+      grid-template-columns: 200px 1fr;
+      min-height: 520px;
+    }
+
+    .window.narrow .content {
+      grid-template-columns: 1fr;
+    }
+
+    .sidebar {
+      background: var(--mac-sidebar);
+      border-right: 0.5px solid var(--mac-border);
+      padding: 20px 12px;
+    }
+
+    .window.narrow .sidebar {
+      display: none;
+    }
+
+    .sidebar .section {
+      font-size: 11px;
+      font-weight: 600;
+      color: var(--mac-muted);
+      text-transform: uppercase;
+      letter-spacing: 0.04em;
+      padding: 0 10px 8px;
+    }
+
+    .nav-item {
+      display: flex;
+      align-items: center;
+      gap: 10px;
+      padding: 8px 10px;
+      border-radius: 8px;
+      font-size: 13px;
+      color: var(--mac-text);
+      cursor: default;
+      margin-bottom: 2px;
+    }
+    .nav-item.active {
+      background: rgba(0, 122, 255, 0.14);
+      color: var(--mac-blue);
+      font-weight: 600;
+    }
+    .nav-item .dot {
+      width: 8px;
+      height: 8px;
+      border-radius: 50%;
+      flex-shrink: 0;
+    }
+
+    .main {
+      padding: 28px 32px 24px;
+      overflow: auto;
+    }
+
+    .window.narrow .main {
+      padding: 20px 18px;
+    }
+
+    .hero-title {
+      font-size: 28px;
+      font-weight: 700;
+      letter-spacing: -0.03em;
+      line-height: 1.15;
+      margin-bottom: 6px;
+    }
+
+    .hero-sub {
+      font-size: 15px;
+      color: var(--mac-muted);
+      margin-bottom: 28px;
+      letter-spacing: -0.01em;
+    }
+
+    .cards {
+      display: grid;
+      grid-template-columns: repeat(3, 1fr);
+      gap: 14px;
+    }
+
+    .window.narrow .cards {
+      grid-template-columns: 1fr;
+    }
+
+    .card {
+      background: var(--mac-card);
+      backdrop-filter: blur(20px) saturate(180%);
+      -webkit-backdrop-filter: blur(20px) saturate(180%);
+      border-radius: var(--mac-radius);
+      border: 0.5px solid rgba(255, 255, 255, 0.6);
+      box-shadow: var(--mac-shadow);
+      padding: 18px 18px 16px;
+      cursor: pointer;
+      transition: transform 0.2s ease, box-shadow 0.2s ease;
+      position: relative;
+      overflow: hidden;
+    }
+
+    .card::before {
+      content: "";
+      position: absolute;
+      top: 0; left: 0; right: 0;
+      height: 3px;
+      border-radius: var(--mac-radius) var(--mac-radius) 0 0;
+    }
+    .card.analizar::before { background: var(--mac-blue); }
+    .card.modelar::before  { background: var(--mac-teal); }
+    .card.ver::before      { background: var(--mac-purple); }
+
+    .card:hover {
+      transform: translateY(-2px);
+      box-shadow: 0 8px 28px rgba(0, 0, 0, 0.12);
+    }
+
+    .card-head {
+      display: flex;
+      align-items: flex-start;
+      gap: 12px;
+      margin-bottom: 10px;
+    }
+
+    .card-icon {
+      width: 36px;
+      height: 36px;
+      border-radius: 9px;
+      display: flex;
+      align-items: center;
+      justify-content: center;
+      flex-shrink: 0;
+    }
+    .card.analizar .card-icon { background: rgba(0,122,255,0.12); color: var(--mac-blue); }
+    .card.modelar  .card-icon { background: rgba(48,176,199,0.14); color: var(--mac-teal); }
+    .card.ver      .card-icon { background: rgba(175,82,222,0.14); color: var(--mac-purple); }
+
+    .card-icon svg { width: 20px; height: 20px; }
+
+    .card h3 {
+      font-size: 15px;
+      font-weight: 600;
+      letter-spacing: -0.02em;
+      line-height: 1.25;
+    }
+
+    .card p {
+      font-size: 12.5px;
+      color: var(--mac-muted);
+      line-height: 1.45;
+      margin-bottom: 14px;
+      min-height: 54px;
+    }
+
+    .card .btn {
+      display: inline-flex;
+      align-items: center;
+      gap: 4px;
+      font-size: 13px;
+      font-weight: 500;
+      color: var(--mac-blue);
+      background: none;
+      border: none;
+      font-family: inherit;
+      cursor: pointer;
+      padding: 0;
+    }
+    .card .btn:hover { color: var(--mac-blue-hover); }
+
+    .footer {
+      margin-top: 28px;
+      padding-top: 16px;
+      border-top: 0.5px solid var(--mac-border);
+      display: flex;
+      justify-content: space-between;
+      align-items: center;
+      font-size: 12px;
+      color: var(--mac-muted);
+    }
+
+    .footer a {
+      color: var(--mac-blue);
+      text-decoration: none;
+      font-weight: 500;
+    }
+
+    /* Panel wizard (vista alternativa) */
+    .wizard-panel { display: none; }
+    .window.show-wizard .home-panel { display: none; }
+    .window.show-wizard .wizard-panel { display: block; }
+
+    .stepper {
+      display: flex;
+      align-items: center;
+      gap: 0;
+      margin-bottom: 24px;
+      flex-wrap: wrap;
+    }
+
+    .step {
+      display: flex;
+      align-items: center;
+      gap: 8px;
+      font-size: 12px;
+      color: var(--mac-muted);
+    }
+    .step .num {
+      width: 24px;
+      height: 24px;
+      border-radius: 50%;
+      display: flex;
+      align-items: center;
+      justify-content: center;
+      font-size: 11px;
+      font-weight: 600;
+      background: #e5e5ea;
+      color: var(--mac-muted);
+    }
+    .step.done .num { background: var(--mac-blue); color: #fff; }
+    .step.active .num {
+      background: var(--mac-blue);
+      color: #fff;
+      box-shadow: 0 0 0 3px rgba(0,122,255,0.25);
+    }
+    .step.active { color: var(--mac-text); font-weight: 600; }
+
+    .step-line {
+      width: 28px;
+      height: 2px;
+      background: #e5e5ea;
+      margin: 0 6px;
+    }
+    .step-line.done { background: var(--mac-blue); }
+
+    .form-card {
+      background: #fff;
+      border-radius: var(--mac-radius);
+      border: 0.5px solid var(--mac-border);
+      padding: 20px;
+      box-shadow: var(--mac-shadow);
+      margin-bottom: 16px;
+    }
+
+    .form-card label {
+      display: block;
+      font-size: 12px;
+      font-weight: 600;
+      color: var(--mac-muted);
+      margin-bottom: 6px;
+    }
+
+    .form-card input {
+      width: 100%;
+      padding: 8px 10px;
+      border-radius: 8px;
+      border: 0.5px solid #d1d1d6;
+      font-family: inherit;
+      font-size: 14px;
+      background: #fafafa;
+      margin-bottom: 14px;
+    }
+    .form-card input:focus {
+      outline: none;
+      border-color: var(--mac-blue);
+      box-shadow: 0 0 0 3px rgba(0,122,255,0.2);
+      background: #fff;
+    }
+
+    .mac-primary {
+      font-family: inherit;
+      font-size: 13px;
+      font-weight: 500;
+      padding: 7px 18px;
+      border-radius: 8px;
+      border: none;
+      background: var(--mac-blue);
+      color: #fff;
+      cursor: pointer;
+      box-shadow: 0 1px 3px rgba(0,122,255,0.35);
+    }
+    .mac-primary:hover { background: var(--mac-blue-hover); }
+
+    .mac-secondary {
+      font-family: inherit;
+      font-size: 13px;
+      padding: 7px 14px;
+      border-radius: 8px;
+      border: 0.5px solid #d1d1d6;
+      background: #fff;
+      color: var(--mac-text);
+      cursor: pointer;
+      margin-right: 8px;
+    }
+
+    .status {
+      display: inline-flex;
+      align-items: center;
+      gap: 6px;
+      font-size: 12px;
+      color: var(--mac-blue);
+      margin-bottom: 12px;
+    }
+    .status::before {
+      content: "";
+      width: 7px;
+      height: 7px;
+      border-radius: 50%;
+      background: var(--mac-blue);
+    }
+
+    .compare {
+      margin-top: 40px;
+      max-width: 920px;
+      width: 100%;
+      background: rgba(255,255,255,0.6);
+      backdrop-filter: blur(12px);
+      border-radius: 12px;
+      padding: 20px 24px;
+      border: 0.5px solid var(--mac-border);
+      font-size: 13px;
+      line-height: 1.55;
+      color: var(--mac-muted);
+    }
+    .compare h2 {
+      font-size: 15px;
+      color: var(--mac-text);
+      margin-bottom: 10px;
+      letter-spacing: -0.02em;
+    }
+    .compare table {
+      width: 100%;
+      border-collapse: collapse;
+      margin-top: 12px;
+      font-size: 12.5px;
+    }
+    .compare th, .compare td {
+      text-align: left;
+      padding: 8px 10px;
+      border-bottom: 0.5px solid var(--mac-border);
+    }
+    .compare th { color: var(--mac-text); font-weight: 600; }
+  </style>
+</head>
+<body>
+  <div class="preview-note">Vista previa — no es la app real · Usa los botones Ancho / Estrecho / Wizard</div>
+
+  <div style="display:flex; flex-direction:column; align-items:center; gap:0;">
+    <div class="window" id="win">
+      <div class="titlebar">
+        <div class="traffic">
+          <span class="close"></span>
+          <span class="min"></span>
+          <span class="max"></span>
+        </div>
+        <h1>Tablero de Oleaje</h1>
+        <div class="toolbar">
+          <button id="btnWide" class="active">Ancho</button>
+          <button id="btnNarrow">Estrecho</button>
+          <button id="btnWizard">Wizard</button>
+        </div>
+      </div>
+
+      <div class="content">
+        <aside class="sidebar">
+          <div class="section">Inicio</div>
+          <div class="nav-item active">
+            <span class="dot" style="background:var(--mac-blue)"></span>
+            ¿Qué quieres hacer?
+          </div>
+          <div class="nav-item">
+            <span class="dot" style="background:var(--mac-muted)"></span>
+            Modo avanzado
+          </div>
+          <div class="section" style="margin-top:20px">Recientes</div>
+          <div class="nav-item" style="font-size:12px;color:var(--mac-muted)">
+            era5_serie.nc
+          </div>
+          <div class="nav-item" style="font-size:12px;color:var(--mac-muted)">
+            extremo_Tr100
+          </div>
+        </aside>
+
+        <main class="main">
+          <!-- Pantalla inicio -->
+          <div class="home-panel">
+            <h2 class="hero-title">¿Qué quieres hacer?</h2>
+            <p class="hero-sub">Elige un flujo guiado o abre las herramientas sueltas.</p>
+
+            <div class="cards">
+              <article class="card analizar">
+                <div class="card-head">
+                  <div class="card-icon">
+                    <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+                      <polyline points="3 17 9 11 13 15 21 7"/>
+                      <polyline points="14 7 21 7 21 14"/>
+                    </svg>
+                  </div>
+                  <h3>Analizar oleaje<br>en un punto</h3>
+                </div>
+                <p>Datos propios o ERA5 → curvas, régimen extremo y espectro.</p>
+                <button class="btn">Empezar →</button>
+              </article>
+
+              <article class="card modelar">
+                <div class="card-head">
+                  <div class="card-icon">
+                    <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+                      <path d="M2 15c2-4 4-4 6 0s4 4 6 0 4-4 6 0"/>
+                      <path d="M2 19c2-4 4-4 6 0s4 4 6 0 4-4 6 0"/>
+                    </svg>
+                  </div>
+                  <h3>Modelar propagación<br>con SWAN</h3>
+                </div>
+                <p>Malla → batimetría → borde → correr → mapas.</p>
+                <button class="btn">Empezar →</button>
+              </article>
+
+              <article class="card ver">
+                <div class="card-head">
+                  <div class="card-icon">
+                    <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+                      <rect x="3" y="3" width="18" height="18" rx="2"/>
+                      <path d="M3 9h18M9 3v18"/>
+                    </svg>
+                  </div>
+                  <h3>Ver una corrida<br>SWAN ya hecha</h3>
+                </div>
+                <p>Graficar mapas o video desde una carpeta de corrida existente.</p>
+                <button class="btn">Empezar →</button>
+              </article>
+            </div>
+
+            <footer class="footer">
+              <span>Creado por Javier Tarrazón</span>
+              <a href="#">Herramientas sueltas (modo avanzado) →</a>
+            </footer>
+          </div>
+
+          <!-- Pantalla wizard (ejemplo) -->
+          <div class="wizard-panel">
+            <h2 class="hero-title" style="font-size:22px">Modelar propagación con SWAN</h2>
+
+            <div class="stepper">
+              <div class="step done"><span class="num">✓</span> Malla</div>
+              <div class="step-line done"></div>
+              <div class="step done"><span class="num">✓</span> Batimetría</div>
+              <div class="step-line done"></div>
+              <div class="step active"><span class="num">3</span> Borde</div>
+              <div class="step-line"></div>
+              <div class="step"><span class="num">4</span> Correr</div>
+              <div class="step-line"></div>
+              <div class="step"><span class="num">5</span> Mapas</div>
+            </div>
+
+            <div class="status">Listo.</div>
+
+            <div class="form-card">
+              <label>Hs de borde [m]</label>
+              <input type="text" value="3.0" />
+              <label>Tp de borde [s]</label>
+              <input type="text" value="12.0" />
+              <label>Dirección [°]</label>
+              <input type="text" value="290" />
+            </div>
+
+            <div style="display:flex; justify-content:space-between; align-items:center">
+              <button class="mac-secondary">← Inicio</button>
+              <div>
+                <button class="mac-secondary">Atrás</button>
+                <button class="mac-primary">Siguiente →</button>
+              </div>
+            </div>
+          </div>
+        </main>
+      </div>
+    </div>
+
+    <div class="compare">
+      <h2>¿Es viable en tu app actual (Tkinter)?</h2>
+      <p>
+        <strong>Sí, en parte.</strong> Se puede acercar mucho con tema personalizado, fuentes del sistema,
+        esquinas redondeadas simuladas y paleta tipo macOS. Lo que <em>no</em> replica Tkinter al 100%:
+        vibrancy/blur real, sidebar nativo, animaciones suaves y tipografía SF Pro idéntica.
+      </p>
+      <table>
+        <tr><th>Elemento Mac</th><th>En Tkinter</th><th>Fidelidad</th></tr>
+        <tr><td>Azul sistema #007AFF</td><td>ttk styles</td><td>Alta</td></tr>
+        <tr><td>Tarjetas con sombra y hover</td><td>tk.Frame + Canvas o imágenes</td><td>Media-alta</td></tr>
+        <tr><td>Sidebar de navegación</td><td>Panel fijo izquierdo</td><td>Alta</td></tr>
+        <tr><td>Stepper con círculos</td><td>Canvas custom</td><td>Alta</td></tr>
+        <tr><td>Blur / vibrancy</td><td>No nativo</td><td>Baja</td></tr>
+        <tr><td>Semáforos de ventana</td><td>Solo decorativo (Windows no los tiene)</td><td>Decorativa</td></tr>
+      </table>
+    </div>
+  </div>
+
+  <script>
+    const win = document.getElementById('win');
+    document.getElementById('btnWide').onclick = () => {
+      win.classList.remove('narrow', 'show-wizard');
+      setActive('btnWide');
+    };
+    document.getElementById('btnNarrow').onclick = () => {
+      win.classList.add('narrow');
+      win.classList.remove('show-wizard');
+      setActive('btnNarrow');
+    };
+    document.getElementById('btnWizard').onclick = () => {
+      win.classList.remove('narrow');
+      win.classList.add('show-wizard');
+      setActive('btnWizard');
+    };
+    function setActive(id) {
+      document.querySelectorAll('.toolbar button').forEach(b => b.classList.remove('active'));
+      document.getElementById(id).classList.add('active');
+    }
+  </script>
+</body>
+</html>

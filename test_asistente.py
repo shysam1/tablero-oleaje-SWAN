@@ -197,3 +197,42 @@ def test_dominio_actual_crea_lista_para_el_nesting():
     assert ctx["dominios"] == [dom]      # estructura de lista lista para el nido
     dom["malla"] = {"x": 1}
     assert pasos_modelar._dominio_actual(ctx) is dom   # no duplica
+
+
+def test_paso_revision_bloquea_con_datos_rotos():
+    """Si el archivo no carga, PasoRevision no debe dejar avanzar el wizard."""
+    import pasos_analizar
+    import tkinter as tk
+    root = tk.Tk(); root.withdraw()
+    try:
+        paso = pasos_analizar.PasoRevision(root)
+        paso.entrar({"ruta_datos": "/ruta/que/no/existe.mat"})
+        ok, msg = paso.validar()
+        assert not ok
+        assert msg                       # mensaje explicativo, no vacío
+    finally:
+        root.destroy()
+
+
+def test_paso_revision_avanza_con_datos_buenos(tmp_path):
+    """Con un Dataset válido (Hs) PasoRevision debe permitir avanzar."""
+    import pasos_analizar
+    import io_oleaje
+    import pandas as pd
+    import tkinter as tk
+
+    fechas = pd.date_range("2024-01-01", periods=48, freq="3h")
+    df = pd.DataFrame({
+        "anio": fechas.year, "mes": fechas.month, "dia": fechas.day,
+        "hora": fechas.hour, "Hs": 1.5, "Tp": 9.0, "Dir": 270.0})
+    nc = tmp_path / "serie.nc"
+    io_oleaje.guardar_netcdf(io_oleaje.construir_dataset(df), nc)
+
+    root = tk.Tk(); root.withdraw()
+    try:
+        paso = pasos_analizar.PasoRevision(root)
+        paso.entrar({"ruta_datos": str(nc)})
+        ok, _ = paso.validar()
+        assert ok
+    finally:
+        root.destroy()

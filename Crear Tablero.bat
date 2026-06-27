@@ -1,3 +1,4 @@
 @echo off
-rem Lanzador del Tablero de Oleaje: abre la GUI con pythonw (sin consola).
-start "" "C:\Users\123ja\AppData\Local\Programs\Python\Python313\pythonw.exe" "%~dp0app_tablero.py"
+rem Regenera el acceso directo dentro de esta carpeta y lo abre.
+powershell -NoProfile -ExecutionPolicy Bypass -File "%~dp0crear_acceso_directo.ps1"
+start "" "%~dp0Tablero de Oleaje.lnk"

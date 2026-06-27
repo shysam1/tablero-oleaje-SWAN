@@ -395,7 +395,7 @@ class PasoCorrer(asistente.Paso):
         f = ttk.Frame(self); f.pack(fill="x")
         ttk.Label(f, text="Nombre del caso:", width=18).pack(side="left")
         ttk.Entry(f, textvariable=self.nombre, width=20).pack(side="left")
-        ttk.Button(self, text="Generar .swn y correr",
+        ttk.Button(self, text="Generar .swn y correr", style="Primary.TButton",
                    command=self._correr).pack(anchor="w", pady=(8, 0))
         self.ok = False
         self.corrido = False               # distingue "aún no corre" de "corrió y falló"
@@ -505,7 +505,7 @@ class PasoVer(asistente.Paso):
         super().__init__(master)
         ttk.Label(self, text="Genera el tablero de mapas de la corrida."
                   ).pack(anchor="w")
-        ttk.Button(self, text="Generar mapas",
+        ttk.Button(self, text="Generar mapas", style="Primary.TButton",
                    command=self._generar).pack(anchor="w", pady=(8, 0))
         self.resultado = None
 

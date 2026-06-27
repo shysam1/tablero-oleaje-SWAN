@@ -402,6 +402,70 @@ def test_descargar_serie_redescarga_cache_corrupta(monkeypatch, tmp_path):
     assert ds.sizes["time"] == 2
 
 
+def _zip_serie_sintetico(ruta):
+    """Imita la descarga del CDS NUEVO: un ZIP con un .nc por 'stream' (olas y
+    atmósfera), coordenada 'valid_time' y grillas lat/lon DISTINTAS por stream."""
+    import xarray as xr
+    import zipfile, tempfile, shutil
+    t = np.array(["2024-07-28T00", "2024-07-28T03"], dtype="datetime64[ns]")
+    tmp = Path(tempfile.mkdtemp())
+    try:
+        olas = xr.Dataset(
+            {"swh": (("valid_time", "latitude", "longitude"), np.full((2, 1, 1), 2.5)),
+             "pp1d": (("valid_time", "latitude", "longitude"), np.full((2, 1, 1), 12.0)),
+             "mwd": (("valid_time", "latitude", "longitude"), np.full((2, 1, 1), 225.0))},
+            coords={"valid_time": t, "latitude": [-37.0], "longitude": [-73.5],
+                    "number": 0, "expver": "0001"})
+        atm = xr.Dataset(
+            {"u10": (("valid_time", "latitude", "longitude"), np.full((2, 3, 3), 1.0)),
+             "v10": (("valid_time", "latitude", "longitude"), np.full((2, 3, 3), -2.0))},
+            coords={"valid_time": t, "latitude": [-36.75, -37.0, -37.25],
+                    "longitude": [-73.75, -73.5, -73.25], "number": 0, "expver": "0001"})
+        p_olas = tmp / "data_stream-wave.nc"; olas.to_netcdf(p_olas)
+        p_atm = tmp / "data_stream-oper.nc"; atm.to_netcdf(p_atm)
+        with zipfile.ZipFile(ruta, "w") as z:
+            z.write(p_olas, p_olas.name)
+            z.write(p_atm, p_atm.name)
+    finally:
+        shutil.rmtree(tmp, ignore_errors=True)
+
+
+def test_parsear_serie_zip_multistream_cds_nuevo(tmp_path):
+    """El CDS nuevo entrega un ZIP (aunque la extensión sea .nc) con olas y viento
+    en streams separados; se unen, se selecciona el punto y valid_time→time."""
+    ruta = tmp_path / "serie.nc"
+    _zip_serie_sintetico(ruta)
+    ds = io_era5._parsear_serie_nc(ruta, lat=-37.0, lon=-73.5)
+    assert {"Hs", "Tp", "Dir", "u10", "v10"} <= set(ds.data_vars)
+    assert "time" in ds.coords and ds.sizes["time"] == 2
+    assert "valid_time" not in ds.coords
+    assert float(ds["Hs"].isel(time=0)) == pytest.approx(2.5)
+    assert "latitude" not in ds.dims          # punto ya seleccionado
+
+
+def test_descargar_serie_cachea_nc_limpio_legible(monkeypatch, tmp_path):
+    """El CDS deja un ZIP; la cache debe quedar como .nc LIMPIO que io_oleaje.cargar
+    abre sin saber de ERA5 (Hs/Tp/Dir/time), y el crudo se limpia."""
+    import io_oleaje
+
+    class _ClienteFalso:
+        def retrieve(self, dataset, peticion, destino):
+            _zip_serie_sintetico(Path(destino))      # el CDS entrega un zip
+
+    monkeypatch.setattr(io_era5, "_cliente", lambda: _ClienteFalso())
+    monkeypatch.setattr(rutas, "RAIZ_SALIDAS", tmp_path)
+
+    ds = io_era5.descargar_serie(-37.0, -73.5, "2024-07-28", "2024-07-28")
+    assert {"Hs", "Tp", "Dir"} <= set(ds.data_vars)
+
+    carpeta = rutas.carpeta_salida(io_era5._nombre_fuente(-37.0, -73.5, "serie"))
+    destino = carpeta / "era5_serie.nc"
+    leido = io_oleaje.cargar(str(destino))           # el pipeline lo lee como .nc normal
+    assert {"Hs", "Tp", "Dir"} <= set(leido.data_vars)
+    assert "time" in leido.coords
+    assert not (carpeta / "era5_serie_cruda.nc").exists()
+
+
 def test_descargar_raster_rechaza_respuesta_no_netcdf(monkeypatch, tmp_path):
     """Un 200 con cuerpo de error (HTML) no debe guardarse como si fuera NetCDF."""
     import urllib.request

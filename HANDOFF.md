@@ -4,8 +4,117 @@
 > en paralelo (Cursor y Claude Code). Para que se entiendan, **todo cambio se
 > registra abajo con su PORQUÉ**, lo más reciente primero. Antes de tocar código,
 > lee esta sección; después de cambiar algo, añade una entrada.
+>
+> **Regla de proyecto:** actualizar HANDOFF es **obligatorio** al cerrar tareas con
+> cambios relevantes; leer HANDOFF al empezar. No dar por terminado el trabajo sin
+> cumplirlo. Implementado en:
+> - Cursor: `.cursor/rules/handoff-bitacora.mdc`
+> - Claude Code: `CLAUDE.md`
 
 ## Registro de cambios (más reciente primero)
+
+### 2026-06-27 · ERA5 serie con el CDS nuevo: ZIP multi-stream + valid_time + cache limpia (Claude Code)
+*Qué/por qué:* el camino «Analizar → Descargar de ERA5 por coordenada» fallaba. La causa
+estaba **oculta** porque el wizard mostraba «NoneType: None» (se corrigió antes en
+`asistente.py`: `traceback.format_exc()` se evaluaba en el lambda diferido a `after`, fuera
+del `except`). Ya visible, aparecieron dos problemas reales encadenados:
+1. **Licencias del dataset no aceptadas** (403 del CDS) — acción del usuario, ya resuelta
+   (aceptar en `cds.climate.copernicus.eu/datasets/reanalysis-era5-single-levels`).
+2. **Formato del CDS nuevo:** la serie llega como **ZIP con un `.nc` por *stream*** (olas y
+   atmósfera, **grillas lat/lon distintas**) y coordenada **`valid_time`**, no `time`.
+   `xr.open_dataset` reventaba al parsear y al validar la cache; y como el pipeline re-lee
+   `era5_serie.nc` con `io_oleaje.cargar` (tkinter `pasos_analizar` y web `motor_web`), el
+   zip crudo tampoco se podía abrir ahí.
+*Arreglo (`io_era5.py`):*
+- `_abrir_descarga_cds()` abre indistintamente un `.nc` plano o un `.zip` multi-stream.
+- `_parsear_serie_nc()` selecciona el punto en **cada** stream (grillas distintas), los une
+  y renombra `valid_time`→`time`.
+- `descargar_serie()` ahora **cachea la serie YA PARSEADA** (Hs/Tp/Dir/time en un punto) en
+  `era5_serie.nc`, de modo que `io_oleaje.cargar` la abre como un `.nc` normal **sin acoplar
+  io_oleaje a ERA5**. Reaprovecha un zip crudo ya cacheado (auto-sana, sin re-pedir al CDS).
+- `_cache_utilizable()` y `_parsear_espectro_nc()` también manejan el zip.
+*Archivos:* `io_era5.py`; `test_regresion.py` (2 tests: zip multi-stream → Hs/Tp/Dir/time;
+descargar_serie deja cache `.nc` limpia legible por `io_oleaje.cargar`).
+*Notas:* 95 en verde (regresión+nesting+asistente). Verificado **end-to-end sobre la cache
+real** del usuario (zip → `.nc` limpio, sin red). El espectro 2D quedó robusto al zip, pero
+su selección de punto/estructura no se validó con datos reales (no se usa ahora).
+
+### 2026-06-27 · Lanzador definitivo: `.lnk` en carpeta + `--gui` sin consola (Cursor)
+*Qué/por qué:* el usuario abría la app desde un acceso directo que **no funcionaba** o
+abría la **UI tk antigua** (`pythonw.exe app_tablero.py`). Tras varios intentos, la
+combinación que **funciona en su PC** (Python 3.13, pywebview/WebView2) quedó así.
+*Estado final verificado por el usuario.*
+*Lanzador principal:*
+- **`Tablero de Oleaje.lnk`** en la **raíz del repo** (no en el Escritorio).
+- Apunta a `python.exe` + `app_web.py --gui` (ruta fija Python313 si hace falta).
+- Regenerar con `crear_acceso_directo.ps1` o `Crear Tablero.bat` (regenera y abre).
+*Flag `--gui` en `app_web.py`:*
+- Redirige stdout/stderr a `os.devnull`.
+- Oculta la consola al inicio (`ShowWindow`) y ~1,5 s después la **cierra** con
+  `FreeConsole()` en un hilo daemon (después de `create_window`, antes/durante
+  `webview.start`). **No** llamar `FreeConsole()` antes de que pywebview arranque:
+  la app sale con código 1.
+*Trampas en el PC del usuario (no reintentar sin leer esto):*
+| Intento | Resultado |
+|---------|-----------|
+| `py -3w` | Falla: *No suitable Python runtime* (launcher solo registra `python.exe`). |
+| `pythonw.exe app_web.py` | Sale al instante con código 1; pywebview no arranca. |
+| `.vbs` con `WindowStyle=0` (sin consola desde el spawn) | No abre la app (mismo efecto). |
+| `python.exe app_web.py` | ✅ Funciona. |
+| `python.exe app_web.py --gui` | ✅ Funciona sin ventana negra persistente. |
+*Archivos:* `app_web.py`, `crear_acceso_directo.ps1`, `Crear Tablero.bat`.
+`Tablero Oleaje.vbs` queda como respaldo legacy; **no** es el lanzador principal.
+*Nota:* el `.lnk` viejo del Escritorio se elimina al correr `crear_acceso_directo.ps1`.
+
+### 2026-06-27 · Acceso directo en carpeta del proyecto (UI web) — iteración intermedia (Cursor)
+*Qué/por qué:* reemplazar `.lnk` interno que apuntaba a `app_tablero.py` (UI tk).
+*Notas:* ver entrada anterior para el estado final (`--gui`, sin `.vbs` como principal).
+
+### 2026-06-27 · Fix acceso directo: python.exe oculto, no pythonw (Cursor)
+*Qué/por qué:* el acceso directo seguía sin abrir aunque `python app_web.py` funcionara.
+`pythonw.exe` lanza `app_web.py` pero **sale al instante con código 1** (pywebview/WebView2
+no arranca bien sin consola en este PC). `python.exe` sí mantiene la ventana abierta.
+*Arreglo:* `Tablero Oleaje.vbs` usa `python.exe` con `WindowStyle=0` (consola oculta) en
+lugar de `pythonw`.
+*Archivo:* `Tablero Oleaje.vbs`.
+
+### 2026-06-27 · Fix acceso directo: lanzador .vbs — py -3w (Cursor)
+*Qué/por qué:* primer intento: `py -3w` fallaba silenciosamente (*No suitable Python runtime*).
+*Arreglo:* se pasó a `pythonw.exe` (insuficiente; ver entrada anterior).
+
+### 2026-06-27 · CLAUDE.md — misma regla HANDOFF para Claude Code (Cursor)
+*Qué/por qué:* paridad con la regla Cursor; Claude Code debe leer/escribir HANDOFF sin
+que el usuario lo recuerde.
+*Archivo:* `CLAUDE.md` en la raíz del repo (punteros rápidos + formato de entrada).
+
+### 2026-06-27 · Regla Cursor: HANDOFF obligatorio (Cursor)
+*Qué/por qué:* el HANDOFF solo se actualizaba cuando el usuario lo pedía; hacía falta
+forzarlo como regla del repo para Cursor y Claude Code.
+*Archivo:* `.cursor/rules/handoff-bitacora.mdc` (`alwaysApply: true`) — leer HANDOFF al
+inicio; escribir entrada + secciones desactualizadas al terminar cambios relevantes.
+
+### 2026-06-27 · UI web pywebview (estilo Mac) + acceso directo (Cursor)
+*Qué/por qué:* la GUI tkinter (`app_tablero.py` + `estilo.py`) se acercaba poco al
+mockup `preview_mac.html` (sombras, bordes redondeados, controles planos). Se migró la
+**interfaz principal** a **pywebview** (WebView2/Edge Chromium en Windows): HTML/CSS/JS
+real, mismo look que el preview, sin reescribir el motor.
+*Archivos nuevos:*
+- `app_web.py` — punto de entrada (ventana pywebview, fallback si no hay Edge).
+- `ui/index.html`, `ui/styles.css`, `ui/app.js` — SPA (inicio, 3 wizards, avanzado).
+- `motor_web.py` — lógica GUI **sin tkinter** (revision_datos, mallas, ERA5, SWAN, etc.).
+- `api_web.py` — puente JS↔Python (`js_api`), diálogos de archivo/carpeta, tareas en hilo
+  con eventos `log`/`progress`/`task_done` hacia la UI.
+- `Tablero Oleaje.vbs` — respaldo legacy (no lanzador principal).
+- `crear_acceso_directo.ps1` — crea `Tablero de Oleaje.lnk` **en la carpeta del proyecto**.
+*Lanzadores:* doble clic en `Tablero de Oleaje.lnk` (`python.exe app_web.py --gui`) o
+`Crear Tablero.bat`. Ver entrada «Lanzador definitivo» en registro de cambios.
+*Dependencia:* `pip install pywebview`.
+*Qué NO se tocó:* pipelines (`tablero_oleaje`, `swan_runner`, `pasos_*.py` lógica de
+negocio). `app_tablero.py` + `asistente.py` + `estilo.py` **siguen** como respaldo tkinter.
+*Modo avanzado web:* botón «Procesar SWAN…» abre `gui_swan.VentanaSwan` en hilo tk
+(`api_web.abrir_procesar_swan_legacy`) — única ventana tk que queda en el flujo web.
+*Detalle UI:* barra superior sin semáforos decorativos (solo título «Tablero de Oleaje»).
+`preview_mac.html` queda como mockup de referencia, no se usa en runtime.
 
 ### 2026-06-27 · Guard pythonw + nota de flake tkinter (Cursor)
 *Qué/por qué:* la app se lanza con **pythonw.exe** (`.lnk`/`.bat`), donde
@@ -237,28 +346,25 @@ Patrón común de todo el código: **registro adaptativo** — cada producto dec
   2024). Videos en `salidas\<fuente>\` (ver Salidas).
 
 ### GUI + lanzadores
-- `app_tablero.py`: GUI tkinter. Botón **Crear** autodetecta 3 modos: carpeta
-  NonSt → video; carpeta SWAN → mapas; archivo `.mat/.csv/.nc` → curvas. Botón
-  **Procesar SWAN…** abre `gui_swan.VentanaSwan`. Campo avanzado **Offset UTM
-  grande** (default Coronel) que se pasa como `utm_large` a mapas/videos. Corre en
-  hilo y abre el resultado al terminar.
-- Doble-clic: `Tablero de Oleaje.lnk` y `Crear Tablero.bat` (usan `pythonw`).
+- **Interfaz principal (pywebview):** `app_web.py` + carpeta `ui/`.
+- **Lanzador del usuario:** `Tablero de Oleaje.lnk` **dentro de la carpeta del proyecto**
+  (no Escritorio). Target: `python.exe` con argumentos `"…\app_web.py" --gui`.
+  Regenerar: `crear_acceso_directo.ps1` o doble clic en `Crear Tablero.bat`.
+- **Desde terminal (con consola, para depurar):** `python app_web.py` (sin `--gui`).
+- **Respaldo tkinter:** `python app_tablero.py` — ya **no** debe usarse en el `.lnk`.
+- Requiere `pywebview` y WebView2 (Edge). Tres caminos guiados + modo avanzado en HTML;
+  motor en `motor_web.py` / `api_web.py`.
+- **SWAN modal:** `gui_swan.VentanaSwan` — desde modo avanzado web («Procesar SWAN…»)
+  o desde `app_tablero.py`. Campo avanzado **Offset UTM grande** (default Coronel).
+- `_asegurar_salida_estandar()` en `app_tablero.py`; en `app_web.py`: redirección
+  stdout/stderr con `--gui` o si son `None` (pythonw). Usar **`os.devnull`**, no `Path.devnull`.
 
 ### Modo guiado (asistente) — sub-proyecto C
-- `app_tablero.py` ya **no** es una sola pantalla: `AppTablero` es un **contenedor de
-  vistas** (`mostrar(nombre)` destruye la vista actual y crea una nueva). Vistas:
-  `VistaInicio` (3 tarjetas: analizar / modelar / ver), `VistaAvanzado` (la GUI de
-  siempre, movida tal cual — cero funcionalidad perdida) y un `asistente.Wizard` por
-  cada camino. `mostrar` captura `ValueError` de un camino sin pasos y cae a inicio.
-- `asistente.py`: `MaquinaWizard` (navegación pura, sin tkinter, 7 tests en
-  `test_asistente.py`) + `Paso` (base: `entrar/validar/recoger`) + `Wizard` (barra de
-  pasos, ← Inicio/Atrás/Siguiente, log/progreso comunes y `tarea(funcion, al_terminar)`
-  que corre trabajo en hilo con guard de reentrada y de use-after-destroy
-  `winfo_exists`). Los callbacks marshalan a la GUI con `self.after(0, …)`.
-- `pasos_analizar.py` / `pasos_modelar.py` / `pasos_ver.py`: los pasos de cada camino,
-  subclases de `Paso`, que **reutilizan el motor** (geo_malla, io_batimetria,
-  borde_oleaje, io_era5, io_oleaje, validacion, productos, swan_builder/runner,
-  tablero_*, video_swan). Mensajes de UI en español neutro (sin voseo).
+- **Web (principal):** wizards en `ui/app.js` (analizar / modelar / ver); pasos y
+  validación en JS; llamadas a `api_web.Api`. Misma secuencia que los `pasos_*.py`.
+- **Tkinter (respaldo):** `app_tablero.py` contenedor de vistas + `asistente.Wizard` +
+  `pasos_analizar.py` / `pasos_modelar.py` / `pasos_ver.py`. `MaquinaWizard` testeable
+  sin tk (`test_asistente.py`).
 - **Nesting (anidado) implementado**: el camino Modelar arma un par grande+nido
   desde cero. `swan_builder.escribir_par_anidado` escribe los dos `.swn` enlazados
   (NGRID/NESTOUT en el grande ↔ BOU NEST en el nido) y `validar_caso_anidado`
@@ -310,9 +416,11 @@ Patrón común de todo el código: **registro adaptativo** — cada producto dec
   los diálogos). `README.md`: doc de uso/flujo/módulos.
 
 ## Entorno
-- Python 3.13: `C:\Users\123ja\AppData\Local\Programs\Python\Python313\` (`pythonw.exe` ahí).
+- Python 3.13: `C:\Users\123ja\AppData\Local\Programs\Python\Python313\`
+  (`python.exe` para la app web; **`pythonw.exe` no sirve** con `app_web.py` en este PC).
+- **`py -3w` no funciona** aquí (*No suitable Python runtime*); usar `python` o ruta fija.
 - Instalados: `xarray` 2026.4.0, `netcdf4` 1.7.4, `scipy`, `matplotlib`, `windrose`,
-  `cmocean`, `ffmpeg` (Gyan, vía winget).
+  `cmocean`, `ffmpeg` (Gyan, vía winget), **`pywebview`** (UI principal), WebView2/Edge.
 
 ## Estado actual y lo que sigue
 La herramienta está **completa y verificada** (A–E). Pendiente abierto al cerrar

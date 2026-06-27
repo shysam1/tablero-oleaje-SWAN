@@ -1,0 +1,57 @@
+<!DOCTYPE html>
+<html lang="es">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1" />
+  <title>Tablero de Oleaje</title>
+  <link rel="stylesheet" href="styles.css" />
+</head>
+<body>
+  <div class="window" id="window">
+    <header class="titlebar">
+      <h1 class="titlebar-title">Tablero de Oleaje</h1>
+    </header>
+
+    <div class="content" id="content">
+      <aside class="sidebar" id="sidebar">
+        <div class="sidebar-section">Inicio</div>
+        <button type="button" class="nav-item active" data-nav="inicio">¿Qué quieres hacer?</button>
+        <button type="button" class="nav-item" data-nav="avanzado">Modo avanzado</button>
+      </aside>
+
+      <main class="main" id="main"></main>
+    </div>
+  </div>
+
+  <!-- Modal condición de borde -->
+  <dialog id="dlg-borde" class="modal">
+    <form method="dialog" class="modal-box">
+      <h3>Condición de borde</h3>
+      <label class="radio"><input type="radio" name="modo" value="retorno" checked /> Periodo de retorno (Gumbel)</label>
+      <label class="radio"><input type="radio" name="modo" value="maximo" /> Máximo observado</label>
+      <label class="radio"><input type="radio" name="modo" value="reinante" /> Oleaje reinante (p50)</label>
+      <label class="field">T [años] (solo retorno)
+        <input type="number" id="borde-tr" value="100" min="1" />
+      </label>
+      <div class="modal-actions">
+        <button type="button" class="btn secondary" id="borde-cancel">Cancelar</button>
+        <button type="submit" class="btn primary">Aceptar</button>
+      </div>
+    </form>
+  </dialog>
+
+  <!-- Modal confirmación SWAN -->
+  <dialog id="dlg-confirm" class="modal">
+    <form method="dialog" class="modal-box">
+      <h3>Advertencias</h3>
+      <pre id="confirm-text" class="log-pre"></pre>
+      <div class="modal-actions">
+        <button type="button" class="btn secondary" id="confirm-no">Cancelar</button>
+        <button type="submit" class="btn primary">Continuar</button>
+      </div>
+    </form>
+  </dialog>
+
+  <script src="app.js"></script>
+</body>
+</html>

@@ -29,6 +29,7 @@ import rutas
 import io_oleaje
 import borde_oleaje
 import asistente
+import estilo
 import pasos_analizar
 import pasos_modelar
 import pasos_ver
@@ -70,47 +71,130 @@ def validar_inputs_era5(lat_txt, lon_txt, inicio, fin):
 
 
 class VistaInicio(ttk.Frame):
-    """Pantalla de inicio con las tres tarjetas de camino + acceso avanzado."""
+    """Pantalla de inicio: sidebar Mac + tarjetas de camino."""
 
     def __init__(self, master, ir_a):
-        super().__init__(master, padding=16)
-        self.ir_a = ir_a              # callback: ir_a(nombre_vista)
-        ttk.Label(self, text="Tablero de Oleaje",
-                  font=("Segoe UI", 18, "bold")).pack(anchor="w")
-        ttk.Label(self, text="¿Qué quieres hacer?",
-                  font=("Segoe UI", 12)).pack(anchor="w", pady=(2, 16))
+        super().__init__(master, padding=0)
+        self.ir_a = ir_a
+        self._iconos = []
 
-        tarjetas = ttk.Frame(self)
-        tarjetas.pack(fill="both", expand=True)
-        tarjetas.rowconfigure(0, weight=1)
+        self._layout = tk.Frame(self, bg=estilo.PALETA["fondo"])
+        self._layout.pack(fill="both", expand=True)
+
+        self._sidebar = tk.Frame(self._layout, bg=estilo.PALETA["sidebar"],
+                                 width=estilo.ANCHO_SIDEBAR)
+        self._sidebar.pack(side="left", fill="y")
+        self._sidebar.pack_propagate(False)
+        self._construir_sidebar()
+
+        self._main = tk.Frame(self._layout, bg=estilo.PALETA["fondo"])
+        self._main.pack(side="left", fill="both", expand=True)
+
+        contenido = tk.Frame(self._main, bg=estilo.PALETA["fondo"], padx=28, pady=24)
+        contenido.pack(fill="both", expand=True)
+
+        tk.Label(contenido, text="¿Qué quieres hacer?", font=estilo.FUENTE_TITULO,
+                 bg=estilo.PALETA["fondo"], fg=estilo.PALETA["texto"]).pack(anchor="w")
+        tk.Label(
+            contenido,
+            text="Elige un flujo guiado o abre las herramientas sueltas.",
+            font=estilo.FUENTE_SUBTITULO, bg=estilo.PALETA["fondo"],
+            fg=estilo.PALETA["texto_secundario"]).pack(anchor="w", pady=(4, 20))
+
+        self._cont_tarjetas = tk.Frame(contenido, bg=estilo.PALETA["fondo"])
+        self._cont_tarjetas.pack(fill="both", expand=True)
+
+        iconos = estilo.cargar_iconos(self)
+        self._iconos = list(iconos.values())
         datos = [
-            ("📈  Analizar oleaje\nen un punto",
+            ("Analizar oleaje\nen un punto",
              "Datos propios o descargados de ERA5 → curvas, régimen extremo, "
-             "espectro.", "analizar"),
-            ("🌊  Modelar propagación\ncon SWAN",
-             "Desde cero: malla → batimetría → borde → correr → mapas.", "modelar"),
-            ("🗺️  Ver una corrida\nSWAN ya hecha",
+             "espectro.", "analizar", "analizar",
+             estilo.PALETA["analizar"], estilo.PALETA["analizar_fondo"]),
+            ("Modelar propagación\ncon SWAN",
+             "Desde cero: malla → batimetría → borde → correr → mapas.",
+             "modelar", "modelar",
+             estilo.PALETA["modelar"], estilo.PALETA["modelar_fondo"]),
+            ("Ver una corrida\nSWAN ya hecha",
              "Tienes la carpeta corrida y solo quieres graficarla (mapas o video).",
-             "ver"),
+             "ver", "ver",
+             estilo.PALETA["ver"], estilo.PALETA["ver_fondo"]),
         ]
-        for i, (titulo, desc, destino) in enumerate(datos):
-            tarjetas.columnconfigure(i, weight=1)
-            tarj = ttk.Frame(tarjetas, relief="solid", borderwidth=1, padding=12)
-            tarj.grid(row=0, column=i, sticky="nsew", padx=6)
-            ttk.Label(tarj, text=titulo, font=("Segoe UI", 12, "bold"),
-                      justify="left").pack(anchor="w")
-            ttk.Label(tarj, text=desc, foreground="#555", wraplength=180,
-                      justify="left").pack(anchor="w", pady=(6, 10))
-            ttk.Button(tarj, text="Empezar →",
-                       command=lambda d=destino: self.ir_a(d)).pack(anchor="w")
+        self._tarjetas = []
+        for titulo, desc, destino, clave_icono, color, fondo_icono in datos:
+            tarj = estilo.TarjetaCamino(
+                self._cont_tarjetas, titulo, desc, destino,
+                iconos[clave_icono], color, fondo_icono, ir_a)
+            self._tarjetas.append(tarj)
 
-        # Pie: crédito de autor a la izquierda y acceso al modo avanzado a la derecha.
-        pie = ttk.Frame(self)
+        pie = tk.Frame(contenido, bg=estilo.PALETA["fondo"])
         pie.pack(fill="x", pady=(16, 0))
-        ttk.Label(pie, text="Creado por Javier Tarrazón",
-                  foreground="#555").pack(side="left")
-        ttk.Button(pie, text="Herramientas sueltas (modo avanzado) →",
+        tk.Label(pie, text="Creado por Javier Tarrazón",
+                 font=("Segoe UI", 10), bg=estilo.PALETA["fondo"],
+                 fg=estilo.PALETA["texto_secundario"]).pack(side="left")
+        ttk.Button(pie, text="Herramientas sueltas →",
+                   style="Secondary.TButton",
                    command=lambda: self.ir_a("avanzado")).pack(side="right")
+
+        self._cont_tarjetas.bind("<Configure>", self._reacomodar_tarjetas)
+        self.bind("<Configure>", self._ajustar_sidebar)
+        self.after_idle(self._reacomodar_tarjetas)
+        self.after_idle(self._ajustar_sidebar)
+
+    def _construir_sidebar(self):
+        pad = tk.Frame(self._sidebar, bg=estilo.PALETA["sidebar"], padx=12, pady=20)
+        pad.pack(fill="both", expand=True)
+
+        tk.Label(pad, text="TABLERO DE OLEAJE", font=estilo.FUENTE_NAV_SECCION,
+                 bg=estilo.PALETA["sidebar"], fg=estilo.PALETA["texto_secundario"]).pack(
+                     anchor="w", pady=(0, 10))
+
+        self._nav_inicio = tk.Label(
+            pad, text="  ¿Qué quieres hacer?", font=("Segoe UI", 11, "bold"),
+            bg=estilo.PALETA["nav_activo"], fg=estilo.PALETA["primario"],
+            anchor="w", padx=8, pady=6)
+        self._nav_inicio.pack(fill="x", pady=(0, 2))
+
+        nav_avanzado = tk.Label(
+            pad, text="  Modo avanzado", font=estilo.FUENTE_NAV,
+            bg=estilo.PALETA["sidebar"], fg=estilo.PALETA["texto"],
+            anchor="w", padx=8, pady=6, cursor="hand2")
+        nav_avanzado.pack(fill="x", pady=(0, 2))
+        nav_avanzado.bind("<Enter>", lambda e: nav_avanzado.configure(
+            bg=estilo.PALETA["borde_suave"]))
+        nav_avanzado.bind("<Leave>", lambda e: nav_avanzado.configure(
+            bg=estilo.PALETA["sidebar"]))
+        nav_avanzado.bind("<Button-1>", lambda e: self.ir_a("avanzado"))
+
+    def _ajustar_sidebar(self, event=None):
+        ancho = self.winfo_width()
+        if ancho < 2:
+            return
+        if ancho < estilo.ANCHURA_APILADA:
+            self._sidebar.pack_forget()
+        elif not self._sidebar.winfo_ismapped():
+            self._sidebar.pack(side="left", fill="y", before=self._main)
+
+    def _reacomodar_tarjetas(self, event=None):
+        ancho = self._cont_tarjetas.winfo_width()
+        if ancho < 2:
+            return
+        apilado = ancho < estilo.ANCHURA_APILADA
+        for w in self._tarjetas:
+            w.grid_forget()
+        if apilado:
+            for i, tarj in enumerate(self._tarjetas):
+                tarj.grid(row=i, column=0, sticky="ew",
+                          pady=(0 if i == 0 else 10, 0))
+            self._cont_tarjetas.columnconfigure(0, weight=1)
+        else:
+            for i, tarj in enumerate(self._tarjetas):
+                tarj.grid(row=0, column=i, sticky="nsew",
+                          padx=(0 if i == 0 else 10, 0))
+                self._cont_tarjetas.columnconfigure(i, weight=1)
+            self._cont_tarjetas.rowconfigure(0, weight=1)
+        for tarj in self._tarjetas:
+            tarj.ajustar_ancho(ancho, apilado)
 
 
 class VistaAvanzado(ttk.Frame):
@@ -141,46 +225,50 @@ class VistaAvanzado(ttk.Frame):
 
     def _construir_widgets(self):
         fila_top = ttk.Frame(self)
-        fila_top.pack(fill="x")
+        fila_top.pack(fill="x", pady=(4, 0))
         self.boton_inicio = ttk.Button(fila_top, text="← Inicio",
+                                       style="Secondary.TButton",
                                        command=self.al_inicio)
         self.boton_inicio.pack(side="left")
         ttk.Label(fila_top, text="Modo avanzado",
-                  font=("Segoe UI", 16, "bold")).pack(side="left", padx=(10, 0))
+                  style="WizardTitulo.TLabel").pack(side="left", padx=(12, 0))
         ttk.Label(self, text="Serie temporal (.mat/.csv/.nc) → curvas. "
                   "Carpeta SWAN → mapas. Carpeta SWAN no estacionaria → video.",
-                  foreground="#555").pack(anchor="w", pady=(4, 10))
+                  style="Muted.TLabel").pack(anchor="w", pady=(8, 12))
 
-        # Selector: campo de texto + botones para archivo o carpeta SWAN.
-        fila = ttk.Frame(self)
-        fila.pack(fill="x", pady=4)
-        ttk.Entry(fila, textvariable=self.ruta_datos).pack(
-            side="left", fill="x", expand=True)
-        ttk.Button(fila, text="Archivo…", command=self._elegir_archivo).pack(
-            side="left", padx=(6, 0))
-        ttk.Button(fila, text="Carpeta SWAN…", command=self._elegir_carpeta).pack(
-            side="left", padx=(6, 0))
+        panel = estilo.PanelTarjeta(self)
+        panel.pack(fill="x", pady=(0, 8))
+        cuerpo = panel.cuerpo
 
-        fila_b = ttk.Frame(self)
-        fila_b.pack(pady=10)
-        self.boton_crear = ttk.Button(fila_b, text="Crear", command=self._crear)
-        self.boton_crear.pack(side="left", ipadx=10, ipady=4)
-        ttk.Button(fila_b, text="Procesar SWAN…", command=self._abrir_swan).pack(
-            side="left", padx=(8, 0), ipadx=6, ipady=4)
-        ttk.Button(fila_b, text="Descargar ERA5…", command=self._abrir_era5).pack(
-            side="left", padx=(8, 0), ipadx=6, ipady=4)
+        fila = tk.Frame(cuerpo, bg=estilo.PALETA["fondo_tarjeta"])
+        fila.pack(fill="x", pady=(0, 10))
+        ent = ttk.Entry(fila, textvariable=self.ruta_datos)
+        ent.pack(side="left", fill="x", expand=True)
+        ttk.Button(fila, text="Archivo…", style="Secondary.TButton",
+                   command=self._elegir_archivo).pack(side="left", padx=(8, 0))
+        ttk.Button(fila, text="Carpeta SWAN…", style="Secondary.TButton",
+                   command=self._elegir_carpeta).pack(side="left", padx=(6, 0))
 
-        # Campo avanzado: offset UTM del dominio grande SWAN (sólo mapas/videos).
-        fila_utm = ttk.Frame(self)
-        fila_utm.pack(fill="x", pady=(0, 2))
+        fila_b = tk.Frame(cuerpo, bg=estilo.PALETA["fondo_tarjeta"])
+        fila_b.pack(fill="x")
+        self.boton_crear = ttk.Button(fila_b, text="Crear", style="Primary.TButton",
+                                      command=self._crear)
+        self.boton_crear.pack(side="left")
+        ttk.Button(fila_b, text="Procesar SWAN…", style="Secondary.TButton",
+                   command=self._abrir_swan).pack(side="left", padx=(8, 0))
+        ttk.Button(fila_b, text="Descargar ERA5…", style="Secondary.TButton",
+                   command=self._abrir_era5).pack(side="left", padx=(6, 0))
+
+        fila_utm = tk.Frame(cuerpo, bg=estilo.PALETA["fondo_tarjeta"])
+        fila_utm.pack(fill="x", pady=(12, 0))
         ttk.Label(fila_utm, text="Offset UTM grande (avanzado):",
-                  foreground="#888").pack(side="left")
+                  style="CardMuted.TLabel").pack(side="left")
         ttk.Entry(fila_utm, textvariable=self.utm_x, width=10).pack(
-            side="left", padx=(4, 0))
+            side="left", padx=(6, 0))
         ttk.Entry(fila_utm, textvariable=self.utm_y, width=10).pack(
-            side="left", padx=(2, 0))
+            side="left", padx=(4, 0))
 
-        self.estado = ttk.Label(self, text="Listo.", foreground="#1f6feb")
+        self.estado = ttk.Label(self, text="Listo.", style="EstadoListo.TLabel")
         self.estado.pack(anchor="w")
 
         # Barra de avance (sólo se llena en el modo video, frame a frame).
@@ -227,7 +315,8 @@ class VistaAvanzado(ttk.Frame):
                 messagebox.showerror("Datos inválidos", str(e)); return
             win.destroy()
             self.boton_inicio.config(state="disabled")
-            self.estado.config(text="Descargando ERA5…", foreground="#d18616")
+            self.estado.config(text="Descargando ERA5…")
+            estilo.configurar_estado(self.estado, "procesando")
             self.salida.delete("1.0", "end")
             threading.Thread(target=self._descargar_era5, daemon=True,
                              args=(lat, lon, campos["inicio"].get(),
@@ -313,7 +402,8 @@ class VistaAvanzado(ttk.Frame):
             return
         self.boton_crear.config(state="disabled")
         self.boton_inicio.config(state="disabled")
-        self.estado.config(text="Procesando…", foreground="#d18616")
+        self.estado.config(text="Procesando…")
+        estilo.configurar_estado(self.estado, "procesando")
         self.progreso["value"] = 0
         self.salida.delete("1.0", "end")
         threading.Thread(target=self._procesar, args=(ruta,), daemon=True).start()
@@ -361,14 +451,15 @@ class VistaAvanzado(ttk.Frame):
             return
         self.progreso["maximum"] = n
         self.progreso["value"] = i + 1
-        self.estado.config(text=f"Generando video… frame {i + 1}/{n}",
-                           foreground="#d18616")
+        self.estado.config(text=f"Generando video… frame {i + 1}/{n}")
+        estilo.configurar_estado(self.estado, "procesando")
 
     def _exito(self, reporte, ruta_salida):
         if not self.winfo_exists():
             return
         self.salida.insert("end", reporte + f"\nResultado: {ruta_salida}\n")
-        self.estado.config(text="Listo.", foreground="#1f6feb")
+        self.estado.config(text="Listo.")
+        estilo.configurar_estado(self.estado, "listo")
         self.progreso["value"] = 0
         self.boton_crear.config(state="normal")
         self.boton_inicio.config(state="normal")
@@ -381,7 +472,8 @@ class VistaAvanzado(ttk.Frame):
         if not self.winfo_exists():
             return
         self.salida.insert("end", mensaje)
-        self.estado.config(text="Error al generar el resultado.", foreground="#d1242f")
+        self.estado.config(text="Error al generar el resultado.")
+        estilo.configurar_estado(self.estado, "error")
         self.progreso["value"] = 0
         self.boton_crear.config(state="normal")
         self.boton_inicio.config(state="normal")
@@ -396,9 +488,10 @@ class AppTablero(tk.Tk):
         # Si se lanzó con pythonw (sin consola), blinda los print() del pipeline.
         _asegurar_salida_estandar()
         super().__init__()
+        estilo.aplicar_tema(self)
         self.title("Tablero de Oleaje")
-        self.geometry("760x620")
-        self.minsize(680, 560)
+        self.geometry("900x660")
+        self.minsize(520, 580)
         self.contenedor = ttk.Frame(self)
         self.contenedor.pack(fill="both", expand=True)
         self.contenedor.rowconfigure(0, weight=1)
