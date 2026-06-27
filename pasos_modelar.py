@@ -258,6 +258,7 @@ class PasoCorrer(asistente.Paso):
         # Copiar la batimetría a la carpeta del caso (rutas relativas en el .swn).
         if bot.parent != destino:
             (destino / bot.name).write_bytes(bot.read_bytes())
+        # Copia de la malla sin 'zona_utm' (swan_builder.construir_swn no la espera).
         malla = dict(dom["malla"]); malla.pop("zona_utm", None)
         bordes = dom["bordes"]
 

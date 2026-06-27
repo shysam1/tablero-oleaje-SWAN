@@ -113,7 +113,8 @@ class Wizard(ttk.Frame):
             p.wizard = self
         self.maquina = MaquinaWizard(self.pasos, self.contexto)
         self._construir()
-        self._mostrar_actual()
+        self.maquina.entrar()          # entra al primer paso (las transiciones
+        self._mostrar_actual()         # posteriores entran vía avanzar/retroceder)
 
     # ------------------------------------------------------------------ UI
     def _construir(self):
@@ -153,8 +154,9 @@ class Wizard(ttk.Frame):
         self.boton_atras.pack(side="right", padx=(0, 6))
 
     def _mostrar_actual(self):
+        # El paso ya recibió entrar() (en __init__, avanzar o retroceder); aquí
+        # sólo se renderiza, para no dispararlo dos veces por transición.
         p = self.maquina.paso_actual()
-        self.maquina.entrar()
         p.tkraise()
         self.barra_pasos.config(
             text=f"Paso {self.maquina.indice + 1} de {len(self.pasos)}: {p.titulo}")
