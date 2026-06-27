@@ -107,6 +107,7 @@ class Wizard(ttk.Frame):
         self.titulo_txt = titulo
         self.al_inicio = al_inicio
         self.contexto = {}
+        self._tarea_activa = False
         self.pasos = [c(self) for c in clases_paso]
         for p in self.pasos:
             p.wizard = self
@@ -185,9 +186,13 @@ class Wizard(ttk.Frame):
         """
         Corre `funcion(log, progreso)` en un hilo, con la navegación bloqueada y
         barra indeterminada. `log(msg)` y `progreso(i, n)` son seguros desde el
-        hilo. Al terminar llama `al_terminar(resultado)` en el hilo de la GUI
+        hilo. `progreso(i, n)` espera `i` en base 0 (la barra muestra `i + 1` de
+        `n`). Al terminar llama `al_terminar(resultado)` en el hilo de la GUI
         (resultado=None si hubo excepción, que se vuelca al log).
         """
+        if self._tarea_activa:
+            return                         # ya hay una tarea en curso; ignorar reentradas
+        self._tarea_activa = True
         self._bloquear(True)
 
         def log(msg):
@@ -224,6 +229,7 @@ class Wizard(ttk.Frame):
             self.progreso.config(mode="determinate", value=0)
 
     def _fin_tarea(self, resultado, al_terminar, error):
+        self._tarea_activa = False
         self._bloquear(False)
         if error:
             self.log.insert("end", error + "\n")
