@@ -28,7 +28,7 @@ def swan_disponible():
 
 def _es_nido(ruta_swn):
     """True si el .swn toma su contorno de un nesting (BOU NEST / BOUN NEST)."""
-    for linea in Path(ruta_swn).read_text().splitlines():
+    for linea in Path(ruta_swn).read_text(encoding="utf-8").splitlines():
         s = linea.strip()
         if s.startswith("$"):
             continue
@@ -62,7 +62,7 @@ def _refs_input(ruta_swn):
     """
     import re
     refs = []
-    for linea in Path(ruta_swn).read_text().splitlines():
+    for linea in Path(ruta_swn).read_text(encoding="utf-8").splitlines():
         s = linea.strip()
         if s.startswith("$"):
             continue
