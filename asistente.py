@@ -214,8 +214,11 @@ class Wizard(ttk.Frame):
                 res = funcion(log, progreso)
                 self.after(0, lambda: self._fin_tarea(res, al_terminar, None))
             except Exception:
-                self.after(0, lambda: self._fin_tarea(None, al_terminar,
-                                                      traceback.format_exc()))
+                # Capturar el traceback aquí, dentro del except: si se difiriera
+                # a `after`, format_exc() correría sin excepción activa y
+                # devolvería "NoneType: None", ocultando el error real.
+                error = traceback.format_exc()
+                self.after(0, lambda: self._fin_tarea(None, al_terminar, error))
 
         threading.Thread(target=worker, daemon=True).start()
 

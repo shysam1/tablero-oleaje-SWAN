@@ -142,6 +142,54 @@ def test_paso_nido_activo_agrega_dominio_sin_espectro():
         root.destroy()
 
 
+def test_tarea_registra_el_error_real_no_nonetype():
+    """Una tarea que falla debe registrar el traceback real, no 'NoneType: None'."""
+    import asistente
+    import tkinter as tk
+
+    class PasoMinimo(asistente.Paso):
+        titulo = "x"
+
+    class HiloSincrono:
+        """Corre el target en el acto: test determinista, sin carrera de hilos."""
+        def __init__(self, target=None, **kw):
+            self._target = target
+
+        def start(self):
+            self._target()
+
+    root = tk.Tk(); root.withdraw()
+    hilo_real = asistente.threading.Thread
+    asistente.threading.Thread = HiloSincrono
+    try:
+        w = asistente.Wizard(root, "T", [PasoMinimo], lambda: None)
+
+        # Capturar los callbacks de after() y dispararlos luego en el hilo
+        # principal, igual que haría after(0). Así se reproduce el momento exacto
+        # del bug: traceback.format_exc() evaluado tras salir del except.
+        diferidos = []
+
+        def after_falso(ms, func=None, *args):
+            if func is not None:
+                diferidos.append(lambda: func(*args))
+            return "id"
+
+        w.after = after_falso
+
+        def trabajo(log, progreso):
+            raise RuntimeError("explosion de prueba")
+
+        w.tarea(trabajo)                       # corre el worker en el acto
+        for cb in diferidos:                   # disparar el cierre en el hilo principal
+            cb()
+        contenido = w.log.get("1.0", "end")
+        assert "explosion de prueba" in contenido
+        assert "NoneType: None" not in contenido
+    finally:
+        asistente.threading.Thread = hilo_real
+        root.destroy()
+
+
 def test_dominio_actual_crea_lista_para_el_nesting():
     import pasos_modelar
     ctx = {}
