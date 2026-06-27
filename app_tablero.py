@@ -50,8 +50,13 @@ class VistaInicio(ttk.Frame):
     def __init__(self, master, ir_a):
         super().__init__(master, padding=16)
         self.ir_a = ir_a              # callback: ir_a(nombre_vista)
-        ttk.Label(self, text="Tablero de Oleaje",
-                  font=("Segoe UI", 18, "bold")).pack(anchor="w")
+        # Encabezado: título a la izquierda y crédito de autor a la derecha.
+        encabezado = ttk.Frame(self)
+        encabezado.pack(fill="x")
+        ttk.Label(encabezado, text="Tablero de Oleaje",
+                  font=("Segoe UI", 18, "bold")).pack(side="left")
+        ttk.Label(encabezado, text="Creado por Javier Tarrazón",
+                  foreground="#555").pack(side="right")
         ttk.Label(self, text="¿Qué quieres hacer?",
                   font=("Segoe UI", 12)).pack(anchor="w", pady=(2, 16))
 
