@@ -70,6 +70,27 @@ Patrón común de todo el código: **registro adaptativo** — cada producto dec
   hilo y abre el resultado al terminar.
 - Doble-clic: `Tablero de Oleaje.lnk` y `Crear Tablero.bat` (usan `pythonw`).
 
+### Modo guiado (asistente) — sub-proyecto C
+- `app_tablero.py` ya **no** es una sola pantalla: `AppTablero` es un **contenedor de
+  vistas** (`mostrar(nombre)` destruye la vista actual y crea una nueva). Vistas:
+  `VistaInicio` (3 tarjetas: analizar / modelar / ver), `VistaAvanzado` (la GUI de
+  siempre, movida tal cual — cero funcionalidad perdida) y un `asistente.Wizard` por
+  cada camino. `mostrar` captura `ValueError` de un camino sin pasos y cae a inicio.
+- `asistente.py`: `MaquinaWizard` (navegación pura, sin tkinter, 7 tests en
+  `test_asistente.py`) + `Paso` (base: `entrar/validar/recoger`) + `Wizard` (barra de
+  pasos, ← Inicio/Atrás/Siguiente, log/progreso comunes y `tarea(funcion, al_terminar)`
+  que corre trabajo en hilo con guard de reentrada y de use-after-destroy
+  `winfo_exists`). Los callbacks marshalan a la GUI con `self.after(0, …)`.
+- `pasos_analizar.py` / `pasos_modelar.py` / `pasos_ver.py`: los pasos de cada camino,
+  subclases de `Paso`, que **reutilizan el motor** (geo_malla, io_batimetria,
+  borde_oleaje, io_era5, io_oleaje, validacion, productos, swan_builder/runner,
+  tablero_*, video_swan). Mensajes de UI en español neutro (sin voseo).
+- **Hueco del nesting (continuidad del 2.º proyecto)**: en el camino Modelar el
+  contexto guarda los dominios como **lista** (`contexto["dominios"]`, helper
+  `pasos_modelar._dominio_actual`); en v1 hay un solo dominio. El nido se agregará
+  como un paso opcional entre Borde y Correr que reutilice malla/batimetría y haga
+  `append`; `PasoCorrer`/`PasoVer` ya leen del dominio para no cambiar de firma.
+
 ### Salidas
 - `rutas.py`: helper común. Todos los productos (tableros PNG, NetCDF, videos) se
   guardan en `salidas\<fuente>\` dentro de la herramienta, una subcarpeta por

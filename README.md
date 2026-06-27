@@ -13,7 +13,29 @@ Doble clic en `Tablero de Oleaje.lnk` (o `Crear Tablero.bat`), o desde consola:
 python app_tablero.py
 ```
 
-La ventana principal tiene un selector y dos acciones:
+## Modo guiado
+
+La app arranca en una pantalla de inicio (**«¿Qué querés hacer?»**) con tres
+caminos paso a paso, pensados para no tener que conocer el orden del flujo. Cada
+camino es un asistente con barra de pasos y botones *Atrás / Siguiente*:
+
+- **Analizar oleaje en un punto** — origen de datos (archivo `.mat/.csv/.nc` o
+  descarga ERA5) → revisión (variables, validación física y qué productos se
+  podrán generar) → **tablero de curvas**.
+- **Modelar propagación con SWAN** — malla por lat/lon → batimetría (descarga
+  automática o `.bot` propio) → borde (manual o derivado de ERA5/serie) → correr
+  SWAN → **tablero de mapas**. Un dominio por ahora; el modelo anidado (nido)
+  llegará como ampliación de este camino.
+- **Ver una corrida SWAN ya hecha** — eliges la carpeta corrida y autodetecta si
+  generar **mapas** (estacionaria) o **video** (no estacionaria).
+
+Cada camino reutiliza el mismo motor que el modo avanzado; no hay lógica
+duplicada. El enlace **«Herramientas sueltas (modo avanzado)»** abre la caja de
+herramientas de siempre, descrita abajo.
+
+## Modo avanzado
+
+En modo avanzado, la ventana ofrece un selector y estas acciones:
 
 - **Crear** — autodetecta el tipo de entrada y genera el producto:
   - archivo `.mat/.csv/.nc` (serie temporal) → **tablero de curvas** (PNG);
@@ -60,7 +82,9 @@ Todas las salidas van a `salidas\<fuente>\`, una subcarpeta por archivo o corrid
 
 | Archivo | Rol |
 |---|---|
-| `app_tablero.py` | Ventana principal (autodetección, botones Procesar SWAN y Descargar ERA5). |
+| `app_tablero.py` | Ventana principal: contenedor de vistas (inicio guiado, los 3 caminos, modo avanzado). |
+| `asistente.py` | Mini-framework de wizard: `MaquinaWizard` (navegación pura, testeable) + `Paso`/`Wizard` (UI con barra de pasos, log/progreso y tareas en hilo). |
+| `pasos_analizar.py` · `pasos_modelar.py` · `pasos_ver.py` | Pasos de cada camino guiado; reutilizan el motor sin reescribirlo. |
 | `io_oleaje.py` · `validacion.py` · `productos.py` · `tablero_oleaje.py` | Serie temporal en un punto → tablero de curvas. |
 | `io_swan.py` · `productos_swan.py` · `tablero_swan.py` | Campos SWAN estacionarios → tablero de mapas. |
 | `io_swan_nonst.py` · `video_swan.py` | Campos SWAN no estacionarios → videos (+ espectro). |
@@ -71,7 +95,7 @@ Todas las salidas van a `salidas\<fuente>\`, una subcarpeta por archivo o corrid
 | `geo_malla.py` | Define la malla por lat/lon (centro + tamaño + celda) y calcula sola la zona UTM y los campos UTM. |
 | `swan_runner.py` · `swan_builder.py` · `gui_swan.py` | Correr SWAN y armar el `.swn`. |
 | `rutas.py` · `config.py` | Carpeta de salidas · preferencias entre sesiones. |
-| `test_regresion.py` | Red de seguridad (valores conocidos). |
+| `test_regresion.py` · `test_asistente.py` | Red de seguridad: valores conocidos del motor · navegación del wizard y composición de los caminos. |
 
 ## Decisiones de diseño
 
@@ -111,9 +135,11 @@ descarga nada.
 ## Tests
 
 ```powershell
-pytest test_regresion.py -v
+pytest test_regresion.py test_asistente.py -v
 ```
 
-Cargan las corridas conocidas y comprueban los valores clave (Hs de borde, número
-de pasos, orientación). Córrelos antes de dar por buena cualquier modificación; si
-los datos de prueba no están en disco, esos tests se saltan solos.
+`test_regresion.py` carga las corridas conocidas y comprueba los valores clave (Hs
+de borde, número de pasos, orientación); si los datos de prueba no están en disco,
+esos tests se saltan solos. `test_asistente.py` cubre la navegación del wizard
+(avanzar/retroceder, validación, contexto compartido) y que cada camino tenga sus
+pasos. Córrelos antes de dar por buena cualquier modificación.
