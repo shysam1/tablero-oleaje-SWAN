@@ -142,8 +142,13 @@ class PasoBatimetria(asistente.Paso):
             title="Batimetría SWAN (.bot)",
             initialdir=config.obtener("ultima_carpeta_swan"),
             filetypes=[("Batimetría", "*.bot"), ("Todos", "*.*")])
-        if r:
-            self.bot.set(r)
+        if not r:
+            return
+        # Asegura la carpeta del caso (donde se armará el .swn) también en este
+        # camino; sin ella, PasoCorrer no tendría dónde escribir el caso.
+        if not self._carpeta_destino():
+            return
+        self.bot.set(r)
 
     def validar(self):
         b = self.bot.get().strip()
@@ -240,7 +245,14 @@ class PasoCorrer(asistente.Paso):
 
     def _correr(self):
         ctx = self._contexto
-        dom = ctx["dominios"][0]
+        dom = ctx.get("dominios", [{}])[0]
+        # Red de seguridad: los pasos previos debieron dejar todo listo.
+        faltan = [k for k in ("malla", "bot", "bordes") if k not in dom]
+        if faltan or not ctx.get("carpeta_caso"):
+            messagebox.showerror(
+                "Faltan datos",
+                "Completa malla, batimetría y borde antes de correr SWAN.")
+            return
         destino = Path(ctx["carpeta_caso"])
         bot = Path(dom["bot"])
         # Copiar la batimetría a la carpeta del caso (rutas relativas en el .swn).
@@ -264,8 +276,8 @@ class PasoCorrer(asistente.Paso):
         self.wizard.log.insert("end", f"Caso generado: {ruta_swn}\n")
 
         def trabajo(log, progreso):
-            ok, nuevas = swan_runner.correr_swan(str(destino), log=log,
-                                                 progreso=progreso)
+            ok, _ = swan_runner.correr_swan(str(destino), log=log,
+                                            progreso=progreso)
             return ok
 
         def al_terminar(ok):
