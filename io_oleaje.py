@@ -11,6 +11,7 @@ Este es el cimiento del pipeline: todo lo demás opera sobre el Dataset que entr
 from pathlib import Path
 import sys
 
+import numpy as np
 import pandas as pd
 import xarray as xr
 from scipy.io import loadmat
@@ -33,7 +34,21 @@ COLUMNAS_TIEMPO = ["anio", "mes", "dia", "hora"]
 
 def _leer_mat(ruta, variable="DataTarea", columnas=COLUMNAS_MAT):
     """Lee una matriz numérica de un .mat y le pone nombres de columna."""
-    matriz = loadmat(ruta)[variable]
+    datos = loadmat(ruta)
+    if variable not in datos:
+        # loadmat mete claves internas (__header__, __version__, …): se filtran
+        # para listar sólo las variables reales en el mensaje de ayuda.
+        disponibles = [k for k in datos if not k.startswith("__")]
+        raise ValueError(
+            f"El .mat no contiene la variable esperada {variable!r}. "
+            f"Variables disponibles: {', '.join(disponibles) or '(ninguna)'}. "
+            f"Indica la correcta con variable_mat=...")
+    matriz = np.asarray(datos[variable])
+    if matriz.ndim != 2 or matriz.shape[1] != len(columnas):
+        raise ValueError(
+            f"La variable {variable!r} del .mat tiene forma {matriz.shape}; "
+            f"se esperaba una matriz 2D de {len(columnas)} columnas "
+            f"({', '.join(columnas)}).")
     return pd.DataFrame(matriz, columns=columnas)
 
 

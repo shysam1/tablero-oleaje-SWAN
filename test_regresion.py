@@ -156,6 +156,78 @@ def test_casos_ordenados_padre_primero(tmp_path):
     assert swan_runner.casos_ordenados(tmp_path) == ["grande", "nido"]
 
 
+def test_correr_swan_no_hereda_exito_si_falla_el_nido(tmp_path, monkeypatch):
+    """norm_end es por carpeta: si el grande sale OK y el nido falla, ok_global=False."""
+    (tmp_path / "grande.swn").write_text("CGRID 0. 0. 0. 1000 1000 10 10 CIRCLE 36 .04 1\n")
+    (tmp_path / "nido.swn").write_text(
+        "CGRID 300 300 0. 200 200 20 20 CIRCLE 36 .04 1\nBOU NEST 'g' CLOSED\n")
+
+    # SWAN simulado: el grande deja norm_end; el nido deja un .erf y NO toca norm_end
+    # (queda el stale del grande, que es justo la trampa del bug).
+    class _Popen:
+        def __init__(self, comando, **kw):
+            self._caso = comando[-1]
+            self._cwd = Path(kw["cwd"])
+            self.stdout = iter(())
+
+        def wait(self):
+            if self._caso == "grande":
+                (self._cwd / "norm_end").write_text("")
+            else:
+                (self._cwd / f"{self._caso}.erf").write_text("error fatal")
+
+    monkeypatch.setattr(swan_runner.shutil, "which", lambda nombre: r"C:\fake\swanrun.bat")
+    monkeypatch.setattr(swan_runner.prioridad, "proteger_swan", lambda **kw: None)
+    monkeypatch.setattr(swan_runner.subprocess, "Popen", lambda *a, **k: _Popen(*a, **k))
+
+    ok, _ = swan_runner.correr_swan(tmp_path)
+    assert ok is False
+
+
+def test_correr_swan_ok_si_todos_los_casos_terminan(tmp_path, monkeypatch):
+    """Caso feliz: si todos dejan norm_end y ninguno deja .erf, ok_global=True."""
+    (tmp_path / "grande.swn").write_text("CGRID 0. 0. 0. 1000 1000 10 10 CIRCLE 36 .04 1\n")
+    (tmp_path / "nido.swn").write_text(
+        "CGRID 300 300 0. 200 200 20 20 CIRCLE 36 .04 1\nBOU NEST 'g' CLOSED\n")
+
+    class _Popen:
+        def __init__(self, comando, **kw):
+            self._cwd = Path(kw["cwd"])
+            self.stdout = iter(())
+
+        def wait(self):
+            (self._cwd / "norm_end").write_text("")
+
+    monkeypatch.setattr(swan_runner.shutil, "which", lambda nombre: r"C:\fake\swanrun.bat")
+    monkeypatch.setattr(swan_runner.prioridad, "proteger_swan", lambda **kw: None)
+    monkeypatch.setattr(swan_runner.subprocess, "Popen", lambda *a, **k: _Popen(*a, **k))
+
+    ok, _ = swan_runner.correr_swan(tmp_path)
+    assert ok is True
+
+
+def test_paso_correr_distingue_no_corrido_fallo_y_ok():
+    """PasoCorrer.validar: bloquea si no corrió, bloquea si corrió y falló, deja si OK."""
+    import pasos_modelar
+    import tkinter as tk
+    root = tk.Tk(); root.withdraw()
+    try:
+        paso = pasos_modelar.PasoCorrer(root)
+        paso.entrar({})
+        ok, msg = paso.validar()                 # aún no corre
+        assert not ok and "espera" in msg.lower()
+
+        paso.corrido, paso.ok = True, False       # corrió pero falló
+        ok, msg = paso.validar()
+        assert not ok and "error" in msg.lower()
+
+        paso.ok = True                            # corrió y salió bien
+        ok, _ = paso.validar()
+        assert ok
+    finally:
+        root.destroy()
+
+
 # --------------------------- Partición espectral ---------------------------
 import particion_espectral
 
@@ -308,6 +380,49 @@ def test_descargar_serie_usa_cliente_y_parsea(monkeypatch, tmp_path):
     assert ds.sizes["time"] == 2
 
 
+def test_descargar_serie_redescarga_cache_corrupta(monkeypatch, tmp_path):
+    """Una cache .nc vacía/corrupta no se usa: se vuelve a descargar."""
+    llamadas = {"n": 0}
+
+    class _ClienteFalso:
+        def retrieve(self, dataset, peticion, destino):
+            llamadas["n"] += 1
+            _nc_serie_sintetico(destino)
+
+    monkeypatch.setattr(io_era5, "_cliente", lambda: _ClienteFalso())
+    monkeypatch.setattr(rutas, "RAIZ_SALIDAS", tmp_path)
+
+    # Deja una cache corrupta (0 bytes) en el sitio donde caería el .nc.
+    carpeta = rutas.carpeta_salida(io_era5._nombre_fuente(-37.0, -73.5, "serie"))
+    (carpeta / "era5_serie.nc").write_bytes(b"")
+
+    ds = io_era5.descargar_serie(lat=-37.0, lon=-73.5,
+                                 inicio="2024-07-28", fin="2024-07-28")
+    assert llamadas["n"] == 1                  # ignoró la cache vacía y descargó
+    assert ds.sizes["time"] == 2
+
+
+def test_descargar_raster_rechaza_respuesta_no_netcdf(monkeypatch, tmp_path):
+    """Un 200 con cuerpo de error (HTML) no debe guardarse como si fuera NetCDF."""
+    import urllib.request
+    from email.message import Message
+
+    class _Resp:
+        def __init__(self):
+            self.status = 200
+            self._h = Message(); self._h["Content-Type"] = "text/html"
+        def __enter__(self): return self
+        def __exit__(self, *a): return False
+        def getcode(self): return self.status
+        @property
+        def headers(self): return self._h
+        def read(self): return b"<html>Error: bbox fuera de rango</html>"
+
+    monkeypatch.setattr(urllib.request, "urlopen", lambda *a, **k: _Resp())
+    with pytest.raises(RuntimeError, match="NetCDF"):
+        io_batimetria.descargar_raster(-33.1, -32.9, -71.8, -71.5, tmp_path / "r.nc")
+
+
 def _nc_espectro_sintetico(ruta):
     """Crea un .nc tipo ERA5 2D spectra: d2fd en log10, dims (time, freq, dir)."""
     import xarray as xr
@@ -358,6 +473,43 @@ def test_tabla_familias_exportable():
     assert len(tabla) == 2
 
 
+def test_retorno_gumbel_no_disponible_con_serie_corta():
+    """Con <2 años de datos, el producto Gumbel se marca no disponible (no se calcula)."""
+    import xarray as xr
+    import productos
+    t = np.arange("2024-01-01", "2024-02-15", dtype="datetime64[D]")   # ~1 mes, 1 año
+    ds = xr.Dataset({"Hs": ("time", np.linspace(1.0, 2.0, len(t)))}, coords={"time": t})
+    informe = {it["nombre"]: it for it in productos.evaluar(ds)}
+    gumbel = informe["Períodos de retorno (Gumbel)"]
+    assert gumbel["disponible"] is False
+    assert gumbel["resultado"] is None
+    assert any("año" in f for f in gumbel["faltan"])      # motivo informado
+
+
+def test_retorno_gumbel_calcular_serie_corta_lanza():
+    """_calc_retorno directo con 1 año lanza ValueError claro, sin overflow silencioso."""
+    import xarray as xr
+    import productos
+    t = np.arange("2024-01-01", "2024-02-01", dtype="datetime64[D]")
+    ds = xr.Dataset({"Hs": ("time", np.linspace(1.0, 2.0, len(t)))}, coords={"time": t})
+    with pytest.raises(ValueError, match="Gumbel"):
+        productos._calc_retorno(ds)
+
+
+def test_retorno_gumbel_disponible_con_serie_larga():
+    """Con ≥2 años el producto Gumbel sí está disponible y calcula la curva."""
+    import xarray as xr
+    import productos
+    t = np.arange("2018-01-01", "2022-01-01", dtype="datetime64[D]")   # 4 años
+    rng = np.random.default_rng(0)
+    ds = xr.Dataset({"Hs": ("time", 1.5 + np.abs(rng.normal(0, 0.6, len(t))))},
+                    coords={"time": t})
+    informe = {it["nombre"]: it for it in productos.evaluar(ds)}
+    gumbel = informe["Períodos de retorno (Gumbel)"]
+    assert gumbel["disponible"] is True
+    assert 100 in gumbel["resultado"]["diseno"]
+
+
 def test_registro_productos_detecta_particion_con_efth():
     import xarray as xr
     import productos
@@ -385,6 +537,18 @@ def test_espectro_particionado_registrado_en_swan():
     item = next(i for i in informe if i["nombre"] == "Espectro particionado")
     assert item["disponible"] is True
     assert item["proyeccion"] == "polar"
+
+
+def test_asegurar_salida_estandar_repara_stdout_none(monkeypatch):
+    """Bajo pythonw (stdout/stderr None), el guard los repara y print() no revienta."""
+    import app_tablero
+    import sys
+    monkeypatch.setattr(sys, "stdout", None)
+    monkeypatch.setattr(sys, "stderr", None)
+    app_tablero._asegurar_salida_estandar()
+    assert sys.stdout is not None and sys.stderr is not None
+    print("esto no debe lanzar")               # escribir al sumidero es seguro
+    sys.stderr.write("ni esto")
 
 
 def test_validar_inputs_era5_convierte_y_valida():
@@ -633,3 +797,145 @@ def test_gui_swan_expone_definir_malla_latlon():
     import gui_swan
     assert callable(gui_swan.dialogo_latlon)
     assert hasattr(gui_swan.VentanaSwan, "_definir_malla_latlon")
+
+
+# --------------------------- Carreras GUI/hilos ---------------------------
+def test_ventana_swan_cierre_cancela_proceso():
+    """Cerrar la ventana mientras corre SWAN cancela y mata el proceso (no huérfano)."""
+    import gui_swan
+    import tkinter as tk
+    root = tk.Tk(); root.withdraw()
+    try:
+        win = gui_swan.VentanaSwan(root)
+
+        class _Proc:
+            def __init__(self): self.killed = False
+            def poll(self): return None              # "sigue vivo"
+            def terminate(self): self.killed = True
+
+        p = _Proc()
+        win._proc = p
+        win._al_cerrar()
+        assert p.killed                              # mató swan.exe
+        assert win._cancelar.is_set()                # marcó cancelación
+    finally:
+        root.destroy()
+
+
+def test_ventana_swan_marshal_no_revienta_tras_cerrar():
+    """Un callback de hilo agendado tras cerrar la ventana no debe lanzar ni ejecutarse."""
+    import gui_swan
+    import tkinter as tk
+    root = tk.Tk(); root.withdraw()
+    try:
+        win = gui_swan.VentanaSwan(root)
+        win.destroy()
+        llamado = []
+        win._marshal(lambda: llamado.append(1))      # ventana muerta: no debe lanzar
+        assert llamado == []                          # ni ejecutar el callback
+    finally:
+        root.destroy()
+
+
+# --------------------------- I/O robusto (entradas frágiles) ---------------------------
+def test_leer_mat_sin_variable_esperada(tmp_path):
+    """Un .mat sin la variable pedida da un error claro que lista las disponibles."""
+    from scipy.io import savemat
+    ruta = tmp_path / "raro.mat"
+    savemat(ruta, {"OtraCosa": np.zeros((10, 7))})
+    with pytest.raises(ValueError, match="DataTarea"):
+        io_oleaje.cargar(ruta)
+    with pytest.raises(ValueError, match="OtraCosa"):
+        io_oleaje._leer_mat(ruta)
+
+
+def test_leer_mat_columnas_incorrectas(tmp_path):
+    """Una matriz con un nº de columnas distinto al esperado no se acepta a ciegas."""
+    from scipy.io import savemat
+    ruta = tmp_path / "corta.mat"
+    savemat(ruta, {"DataTarea": np.zeros((10, 3))})       # se esperan 7 columnas
+    with pytest.raises(ValueError, match="columnas"):
+        io_oleaje._leer_mat(ruta)
+
+
+def test_cgrid_mxc_cero_es_error(tmp_path):
+    """CGRID con mxc=0 no debe provocar ZeroDivisionError, sino un error claro."""
+    swn = tmp_path / "degenerado.swn"
+    swn.write_text("CGRID 0 0 0 1000 1000 0 10 CIRCLE 36 0.04 1\n")
+    with pytest.raises(ValueError, match="mxc/myc"):
+        io_swan._leer_cgrid(swn)
+    with pytest.raises(ValueError, match="mxc/myc"):
+        io_swan_nonst._leer_cgrid(swn)
+
+
+def test_cgrid_truncado_es_error(tmp_path):
+    """CGRID con menos tokens de los necesarios da un error claro, no IndexError."""
+    swn = tmp_path / "trunco.swn"
+    swn.write_text("CGRID 0 0 0 1000\n")
+    with pytest.raises(ValueError, match="incompleto"):
+        io_swan._leer_cgrid(swn)
+
+
+def test_espectro_swan_truncado_es_error(tmp_path):
+    """SPEC2D estacionario con la matriz truncada → ValueError, no IndexError."""
+    esp = tmp_path / "spectro.dat"
+    esp.write_text("\n".join([
+        "AFREQ", "2", "0.1", "0.2",
+        "CDIR", "2", "0.0", "90.0",
+        "FACTOR", "1.0",
+        "1 2",                                   # falta la 2ª fila de la matriz
+    ]) + "\n")
+    with pytest.raises(ValueError, match="truncad"):
+        io_swan.leer_espectro_swan(esp)
+
+
+def test_espectro_temporal_truncado_es_error(tmp_path):
+    """SPEC2D temporal con la matriz truncada → ValueError, no IndexError."""
+    esp = tmp_path / "spectro_temporal.dat"
+    esp.write_text("\n".join([
+        "SWAN 1",
+        "AFREQ", "2", "0.1", "0.2",
+        "CDIR", "2", "0.0", "90.0",
+        "20240728.000000", "FACTOR", "1.0",
+        "1 2",                                   # falta la 2ª fila
+    ]) + "\n")
+    with pytest.raises(ValueError, match="truncad"):
+        io_swan_nonst.leer_espectro_temporal(esp)
+
+
+# --------------------------- Validación física ---------------------------
+import validacion
+
+
+def test_chequeo_tiempo_un_solo_paso_no_revienta():
+    """Serie de 1 timestamp: mode() vendría vacío; el chequeo no debe lanzar."""
+    import xarray as xr
+    ds = xr.Dataset({"Hs": ("time", [1.5])},
+                    coords={"time": np.array(["2024-07-28T00"], dtype="datetime64[ns]")})
+    res = {r["nombre"]: r for r in validacion.validar(ds)}
+    cont = res["Continuidad temporal"]
+    assert cont["aplicable"] is True
+    assert cont["n_falla"] == 0
+    assert "1 paso" in cont["detalle"]
+
+
+def test_chequeo_tiempo_serie_vacia_no_revienta():
+    """Serie sin pasos: tampoco debe lanzar IndexError."""
+    import xarray as xr
+    ds = xr.Dataset({"Hs": ("time", np.array([], dtype=float))},
+                    coords={"time": np.array([], dtype="datetime64[ns]")})
+    n_falla, _ = validacion._chequeo_tiempo(ds)
+    assert n_falla == 0
+
+
+def test_chequeo_tiempo_detecta_hueco_y_duplicado():
+    """Con ≥2 pasos sigue detectando huecos y duplicados (no se rompió el caso normal)."""
+    import xarray as xr
+    # Paso dominante 3 h (dos veces), un duplicado (0 h) y un hueco (12 h).
+    t = np.array(["2024-07-28T00", "2024-07-28T03", "2024-07-28T06",
+                  "2024-07-28T06",                                    # duplicado
+                  "2024-07-28T18"], dtype="datetime64[ns]")          # hueco
+    ds = xr.Dataset({"Hs": ("time", [1.0, 1.1, 1.2, 1.3, 1.4])}, coords={"time": t})
+    n_falla, detalle = validacion._chequeo_tiempo(ds)
+    assert n_falla == 2
+    assert "1 huecos" in detalle and "1 duplicados" in detalle

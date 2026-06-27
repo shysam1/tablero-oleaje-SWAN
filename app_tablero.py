@@ -10,6 +10,7 @@ intercambia "vistas".
 
 import io
 import os
+import sys
 import threading
 import traceback
 from contextlib import redirect_stdout
@@ -31,6 +32,30 @@ import asistente
 import pasos_analizar
 import pasos_modelar
 import pasos_ver
+
+
+class _SumideroNulo(io.TextIOBase):
+    """Stream que descarta lo que se le escribe (para reemplazar a stdout None)."""
+
+    def write(self, _texto):
+        return 0
+
+    def flush(self):
+        pass
+
+
+def _asegurar_salida_estandar():
+    """
+    Bajo pythonw.exe (sin consola) `sys.stdout`/`sys.stderr` son None, así que
+    cualquier print() del pipeline (avisos de io_swan, reportes de validación,
+    capacidades de productos…) reventaría con AttributeError al escribir en None.
+    Si faltan, se redirigen a un sumidero para que la app no dependa de la consola.
+    Sólo actúa cuando son None: con consola (o bajo pytest) no toca nada.
+    """
+    if sys.stdout is None:
+        sys.stdout = _SumideroNulo()
+    if sys.stderr is None:
+        sys.stderr = _SumideroNulo()
 
 
 def validar_inputs_era5(lat_txt, lon_txt, inicio, fin):
@@ -100,6 +125,19 @@ class VistaAvanzado(ttk.Frame):
         self.utm_x = tk.StringVar(value="620494")
         self.utm_y = tk.StringVar(value="5876451")
         self._construir_widgets()
+
+    def _marshal(self, func, *args):
+        """
+        Agenda func(*args) en el hilo de la GUI desde un hilo de trabajo, ignorando
+        en silencio si la vista ya se destruyó (al cerrar la app o volver a inicio).
+        """
+        def _run():
+            if self.winfo_exists():
+                func(*args)
+        try:
+            self.after(0, _run)
+        except tk.TclError:
+            pass
 
     def _construir_widgets(self):
         fila_top = ttk.Frame(self)
@@ -241,10 +279,10 @@ class VistaAvanzado(ttk.Frame):
                     print(f"Espectro ERA5 descargado: {esp.sizes.get('time', 0)} pasos.")
             carpeta = rutas.carpeta_salida(io_era5._nombre_fuente(lat, lon, "serie"))
             nc_serie = carpeta / "era5_serie.nc"
-            self.after(0, self.ruta_datos.set, str(nc_serie))
-            self.after(0, self._exito, buffer.getvalue(), str(carpeta))
+            self._marshal(self.ruta_datos.set, str(nc_serie))
+            self._marshal(self._exito, buffer.getvalue(), str(carpeta))
         except Exception:
-            self.after(0, self._error, buffer.getvalue() + "\n" + traceback.format_exc())
+            self._marshal(self._error, buffer.getvalue() + "\n" + traceback.format_exc())
 
     def _elegir_archivo(self):
         ruta = filedialog.askopenfilename(
@@ -285,15 +323,15 @@ class VistaAvanzado(ttk.Frame):
         buffer = io.StringIO()
 
         def progreso(i, n):
-            self.after(0, self._set_progreso, i, n)
+            self._marshal(self._set_progreso, i, n)
 
         try:
             with redirect_stdout(buffer):
                 salida = self._despachar(Path(ruta), progreso)
-            self.after(0, self._exito, buffer.getvalue(), str(salida))
+            self._marshal(self._exito, buffer.getvalue(), str(salida))
         except Exception:
-            self.after(0, self._error,
-                       buffer.getvalue() + "\n" + traceback.format_exc())
+            self._marshal(self._error,
+                          buffer.getvalue() + "\n" + traceback.format_exc())
 
     def _utm_large(self):
         """Offset UTM del campo avanzado, o None si está vacío/ inválido."""
@@ -355,6 +393,8 @@ class AppTablero(tk.Tk):
     """Ventana principal: contenedor que intercambia vistas (inicio/wizards/avanzado)."""
 
     def __init__(self):
+        # Si se lanzó con pythonw (sin consola), blinda los print() del pipeline.
+        _asegurar_salida_estandar()
         super().__init__()
         self.title("Tablero de Oleaje")
         self.geometry("760x620")
@@ -398,4 +438,5 @@ class AppTablero(tk.Tk):
 
 
 if __name__ == "__main__":
+    _asegurar_salida_estandar()
     AppTablero().mainloop()

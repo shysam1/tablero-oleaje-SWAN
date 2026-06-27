@@ -102,6 +102,39 @@ def _nombre_fuente(lat, lon, sufijo):
     return f"ERA5_{lat:+.2f}_{lon:+.2f}_{sufijo}".replace(".", "p")
 
 
+def _cache_utilizable(ruta):
+    """
+    True si el .nc cacheado existe, no está vacío y se puede abrir. Una descarga
+    interrumpida puede dejar un .nc de 0 bytes o truncado; confiar en él daría un
+    error críptico aguas abajo (o datos a medias), así que se re-descarga.
+    """
+    try:
+        if not ruta.exists() or ruta.stat().st_size == 0:
+            return False
+        with xr.open_dataset(ruta):
+            return True
+    except Exception:
+        return False
+
+
+def _retrieve_atomico(dataset, peticion, destino):
+    """
+    Descarga a un archivo temporal y lo renombra al terminar. Así una descarga
+    interrumpida nunca deja en su sitio un .nc a medio escribir que luego parezca
+    una cache válida.
+    """
+    tmp = destino.with_name(destino.name + ".part")
+    try:
+        _cliente().retrieve(dataset, peticion, str(tmp))
+        tmp.replace(destino)
+    finally:
+        if tmp.exists():
+            try:
+                tmp.unlink()
+            except OSError:
+                pass
+
+
 def descargar_serie(lat, lon, inicio, fin, incluir_viento=False):
     """
     Descarga la serie ERA5 de Hs/Tp/Dir (opcional viento) para un punto y rango,
@@ -110,10 +143,10 @@ def descargar_serie(lat, lon, inicio, fin, incluir_viento=False):
     """
     carpeta = rutas.carpeta_salida(_nombre_fuente(lat, lon, "serie"))
     destino = carpeta / "era5_serie.nc"
-    if not destino.exists():
-        _cliente().retrieve(_DATASET_SERIE,
-                            _peticion_serie(lat, lon, inicio, fin, incluir_viento),
-                            str(destino))
+    if not _cache_utilizable(destino):
+        _retrieve_atomico(_DATASET_SERIE,
+                          _peticion_serie(lat, lon, inicio, fin, incluir_viento),
+                          destino)
     return _parsear_serie_nc(destino, lat, lon)
 
 
@@ -148,11 +181,11 @@ def descargar_espectro(lat, lon, inicio, fin):
     """
     carpeta = rutas.carpeta_salida(_nombre_fuente(lat, lon, "espectro"))
     destino = carpeta / "era5_espectro.nc"
-    if not destino.exists():
+    if not _cache_utilizable(destino):
         anios, meses, dias, horas = _rango_fechas(inicio, fin)
         peticion = {"product_type": "reanalysis", "variable": _VARS_ESPECTRO,
                     "year": anios, "month": meses, "day": dias, "time": horas,
                     "area": [lat + 0.25, lon - 0.25, lat - 0.25, lon + 0.25],
                     "format": "netcdf"}
-        _cliente().retrieve(_DATASET_ESPECTRO, peticion, str(destino))
+        _retrieve_atomico(_DATASET_ESPECTRO, peticion, destino)
     return _parsear_espectro_nc(destino)

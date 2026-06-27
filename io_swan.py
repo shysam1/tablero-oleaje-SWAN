@@ -82,9 +82,19 @@ def _leer_cgrid(ruta_swn):
     for linea in Path(ruta_swn).read_text().splitlines():
         partes = linea.split()
         if partes and partes[0].upper() == "CGRID":
+            # CGRID xpc ypc alpc xlenc ylenc mxc myc … → se necesitan 8 tokens.
+            if len(partes) < 8:
+                raise ValueError(
+                    f"CGRID incompleto en {Path(ruta_swn).name}: {linea.strip()!r}")
             x0, y0 = float(partes[1]), float(partes[2])
             xlenc, ylenc = float(partes[4]), float(partes[5])
             mxc, myc = int(partes[6]), int(partes[7])
+            # mxc/myc son el nº de celdas: con 0 la malla es degenerada y dx/dy
+            # dividirían por cero.
+            if mxc <= 0 or myc <= 0:
+                raise ValueError(
+                    f"CGRID con mxc/myc no positivos ({mxc}, {myc}) en "
+                    f"{Path(ruta_swn).name}; deben ser ≥ 1.")
             return {"nx": mxc + 1, "ny": myc + 1,
                     "dx": xlenc / mxc, "dy": ylenc / myc,
                     "x0_local": x0, "y0_local": y0}
@@ -151,6 +161,9 @@ def leer_espectro_swan(carpeta, archivo=None):
     def _bloque(i, n):
         vals = []
         while len(vals) < n:
+            if i >= len(lineas):
+                raise ValueError(
+                    f"{ruta.name}: espectro truncado (se esperaban {n} valores).")
             vals.append(float(lineas[i].split()[0]))
             i += 1
         return np.array(vals), i
@@ -169,10 +182,24 @@ def leer_espectro_swan(carpeta, archivo=None):
             excepcion = float(tokens[0])
             i += 1
         elif clave == "FACTOR":
+            if freqs is None or dirs is None:
+                raise ValueError(
+                    f"{ruta.name}: FACTOR antes de declarar frecuencias/direcciones.")
             factor = float(lineas[i + 1].split()[0])
             i += 2
-            matriz = np.array([list(map(float, lineas[i + r].split()))
-                               for r in range(len(freqs))])
+            if i + len(freqs) > len(lineas):
+                raise ValueError(
+                    f"{ruta.name}: matriz espectral truncada "
+                    f"(faltan filas; se esperaban {len(freqs)}).")
+            filas = []
+            for r in range(len(freqs)):
+                fila = list(map(float, lineas[i + r].split()))
+                if len(fila) != len(dirs):
+                    raise ValueError(
+                        f"{ruta.name}: la fila {r} del espectro tiene {len(fila)} "
+                        f"valores; se esperaban {len(dirs)}.")
+                filas.append(fila)
+            matriz = np.array(filas)
             i += len(freqs)
         else:
             i += 1

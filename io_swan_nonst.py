@@ -58,9 +58,19 @@ def _leer_cgrid(ruta_swn):
     for linea in Path(ruta_swn).read_text().splitlines():
         partes = linea.split()
         if partes and partes[0].upper() == "CGRID":
+            # CGRID xpc ypc alpc xlenc ylenc mxc myc … → se necesitan 8 tokens.
+            if len(partes) < 8:
+                raise ValueError(
+                    f"CGRID incompleto en {Path(ruta_swn).name}: {linea.strip()!r}")
             x0, y0 = float(partes[1]), float(partes[2])
             xlenc, ylenc = float(partes[4]), float(partes[5])
             mxc, myc = int(partes[6]), int(partes[7])
+            # mxc/myc son el nº de celdas: con 0 la malla es degenerada y dx/dy
+            # dividirían por cero.
+            if mxc <= 0 or myc <= 0:
+                raise ValueError(
+                    f"CGRID con mxc/myc no positivos ({mxc}, {myc}) en "
+                    f"{Path(ruta_swn).name}; deben ser ≥ 1.")
             return {"nx": mxc + 1, "ny": myc + 1,
                     "dx": xlenc / mxc, "dy": ylenc / myc,
                     "x0_local": x0, "y0_local": y0}
@@ -141,6 +151,9 @@ def leer_espectro_temporal(ruta):
     def _vals(i, n):                       # lee n valores escalares desde la línea i
         out = []
         while len(out) < n:
+            if i >= len(lineas):
+                raise ValueError(
+                    f"{ruta.name}: espectro truncado (se esperaban {n} valores).")
             out.append(float(lineas[i].split()[0]))
             i += 1
         return np.array(out), i
@@ -163,6 +176,10 @@ def leer_espectro_temporal(ruta):
         else:
             i += 1
 
+    if freqs is None or dirs is None:
+        # Sin AFREQ/CDIR no se puede dimensionar la matriz: archivo no es un
+        # SPEC2D válido (o está truncado en el encabezado).
+        return None
     nf, nd = len(freqs), len(dirs)
     tiempos, cubos = [], []
     while i < len(lineas):
@@ -175,8 +192,19 @@ def leer_espectro_temporal(ruta):
         if etiqueta == "FACTOR":
             factor = float(lineas[i + 2].split()[0])
             base = i + 3
-            mat = np.array([list(map(float, lineas[base + r].split()))
-                            for r in range(nf)])
+            if base + nf > len(lineas):
+                raise ValueError(
+                    f"{ruta.name}: matriz espectral truncada en {m.group(1)}."
+                    f"{m.group(2)} (faltan filas; se esperaban {nf}).")
+            filas = []
+            for r in range(nf):
+                fila = list(map(float, lineas[base + r].split()))
+                if len(fila) != nd:
+                    raise ValueError(
+                        f"{ruta.name}: fila {r} del espectro tiene {len(fila)} "
+                        f"valores; se esperaban {nd}.")
+                filas.append(fila)
+            mat = np.array(filas)
             with np.errstate(invalid="ignore"):
                 dens = mat * factor
                 dens[np.isclose(mat, excepcion)] = np.nan

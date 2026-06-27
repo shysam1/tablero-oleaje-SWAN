@@ -7,6 +7,132 @@
 
 ## Registro de cambios (más reciente primero)
 
+### 2026-06-27 · Guard pythonw + nota de flake tkinter (Cursor)
+*Qué/por qué:* la app se lanza con **pythonw.exe** (`.lnk`/`.bat`), donde
+`sys.stdout`/`sys.stderr` son **None**. Cualquier `print()` del pipeline (avisos de dedup
+de `io_swan`, reporte de validación, capacidades de `productos`, etc.) reventaría con
+`AttributeError: 'NoneType' has no attribute 'write'`. Algunos flujos capturan stdout con
+`redirect_stdout`, pero otros (camino "Ver" del asistente, que llama `cargar_corrida`) no.
+*Arreglo:* `app_tablero._asegurar_salida_estandar()` reemplaza stdout/stderr por un
+`_SumideroNulo` **sólo si son None**; se llama en `AppTablero.__init__` y en el `__main__`.
+Con consola o bajo pytest no toca nada. *Test:* `test_asegurar_salida_estandar_repara_stdout_none`.
+
+> ⚠️ **Flake de entorno (no es un bug del código):** al correr la suite completa, los tests
+> que crean `tk.Tk()` en `test_asistente.py` fallan **de forma intermitente** con
+> `TclError: Can't find a usable tk.tcl … couldn't read file "…/tk8.6/<X>.tcl"` (cambia el
+> archivo: `tk.tcl`, `winTheme.tcl`, `cursors.tcl`, `msgs/es.msg`). Es tkinter que no puede
+> **leer sus propios archivos Tcl** del install de Python (probable OneDrive on-demand / AV
+> bloqueando lecturas, agravado al crear muchos `Tk()` y por Claude Code corriendo en
+> paralelo). **Re-correr lo pone en verde** (verificado: 2 fallos → 0 al repetir, sin tocar
+> código). `test_regresion.py`+`test_nesting.py` (77) son estables. Si se quiere robustez:
+> excluir on-demand la carpeta `Python313\tcl` de OneDrive/AV, o serializar las pruebas GUI.
+
+### 2026-06-27 · ALTA #8 — carreras GUI/hilos (winfo_exists + cancelar al cerrar) (Cursor)
+*Qué/por qué + arreglo:*
+- **`gui_swan.VentanaSwan`**: ninguno de los callbacks que el hilo de SWAN marshalaba a
+  la GUI (`_log`, `_set_progreso`, `_terminar`, `_error`, `_cancelado_fin`, `_bati_worker`)
+  comprobaba `winfo_exists()`, y **cerrar la ventana mientras corría SWAN dejaba un
+  `swan.exe` huérfano** (no había handler de cierre). *Arreglo:* helper `_marshal()` que
+  agenda con `after` envuelto en `try/except TclError` y sólo ejecuta si `_vivo()`;
+  `protocol("WM_DELETE_WINDOW", _al_cerrar)` que setea la cancelación y `terminate()` del
+  proceso antes de destruir. Todos los callbacks pasan ahora por `_marshal`.
+- **`app_tablero.VistaAvanzado`**: las tres callbacks ya chequeaban `winfo_exists()`, pero
+  el `self.after(...)` de `_descargar_era5`/`_procesar` podía lanzar `TclError` si la app
+  se cerraba a mitad, y `ruta_datos.set` iba sin guard. *Arreglo:* mismo helper `_marshal()`
+  para todo el marshaling de los hilos.
+*Tests:* `test_ventana_swan_cierre_cancela_proceso` (cerrar mata el proceso y marca
+cancelación) y `test_ventana_swan_marshal_no_revienta_tras_cerrar` (marshal tras destroy
+no lanza ni ejecuta). 92 en verde.
+
+### 2026-06-27 · ALTA #7 — Gumbel sin protección con series cortas (Cursor)
+*Qué:* `productos._calc_retorno` ajustaba Gumbel sobre `groupby("time.year").max()` sin
+mirar cuántos años había, y `evaluar()` lo calcula de forma **anticipada** para todo
+producto disponible. Con <2 años el ajuste es degenerado (`scale→0`): scipy soltaba
+"overflow/invalid value" y la fit reventaba/daba NaN. *Por qué importa:* además de la
+curva sin sentido, hacía que `evaluar()` lanzara excepción → y esa excepción es justo la
+que dejaba en **rojo** el test de Claude Code `test_paso_revision_avanza_con_datos_buenos`
+(serie de prueba de 1 año). `borde_oleaje` ya estaba protegido (`n<2 → ValueError`); esto
+faltaba en `productos`.
+*Arreglo:* `_calc_retorno` lanza `ValueError` claro si hay <2 años; el registro de
+productos admite un predicado opcional `aplicable(ds)` y el de Gumbel usa
+`_n_anios(ds) >= 2`; `evaluar()` marca el producto **no disponible** con el motivo
+"≥ 2 años de datos…" (sin calcular nada). Patrón "registro adaptativo" intacto y compatible
+con `tablero_oleaje`.
+*Efecto colateral bueno:* la suite completa (incluyendo `test_asistente.py`) vuelve a
+**90 en verde**; el rojo de ALTA #1 (Claude Code) era consecuencia de este bug, no de su
+implementación, así que se resolvió **sin tocar sus archivos**.
+*Tests:* 3 nuevos en `test_regresion.py` (no disponible con serie corta, `_calc_retorno`
+lanza con 1 año, disponible con 4 años).
+
+### 2026-06-27 · ALTA #6 — cache ERA5 sin validar + HTTP de batimetría sin chequeo (Cursor)
+*Qué/por qué + arreglo:*
+- **`io_era5` (cache)**: `descargar_serie`/`descargar_espectro` confiaban en cualquier
+  `.nc` existente (`if not destino.exists()`). Una descarga interrumpida deja un `.nc` de
+  0 bytes o truncado → al parsearlo, error críptico (o datos a medias). *Arreglo:*
+  `_cache_utilizable()` (existe + no vacío + se abre) decide si re-descargar, y
+  `_retrieve_atomico()` baja a un `.part` y renombra al final, así nunca queda una cache
+  a medio escribir.
+- **`io_batimetria.descargar_raster` (HTTP)**: `urlretrieve` sólo falla con status de
+  error, pero ERDDAP suele responder **200 con un cuerpo de error** (texto/HTML); eso se
+  guardaba como si fuera NetCDF y xarray reventaba. *Arreglo:* `urlopen` con chequeo de
+  status, content-type y **bytes mágicos** (`CDF`/`\x89HDF`); si no es NetCDF, `RuntimeError`
+  con el detalle del servidor y la sugerencia de usar un `.bot` local. `HTTPError` ahora
+  incluye código + cuerpo.
+*Tests:* `test_descargar_serie_redescarga_cache_corrupta` (cache de 0 bytes → re-descarga)
+y `test_descargar_raster_rechaza_respuesta_no_netcdf` (200 con HTML → RuntimeError). 71 verde.
+
+### 2026-06-27 · ALTA #5 — I/O frágil (.mat, CGRID, SPEC2D) (Cursor)
+*Qué/por qué + arreglo:*
+- **`io_oleaje._leer_mat`**: hacía `loadmat(ruta)[variable]` → `KeyError` críptico si el
+  .mat no traía `DataTarea`, y armaba el DataFrame aunque el nº de columnas no calzara.
+  Ahora valida la presencia de la variable (mensaje que **lista las disponibles**) y que
+  la matriz sea 2D con el nº de columnas esperado.
+- **`_leer_cgrid` (io_swan e io_swan_nonst)**: `dx = xlenc/mxc` reventaba con
+  `ZeroDivisionError` si `mxc=0`, y `partes[6/7]` con `IndexError` si el CGRID venía
+  truncado. Ahora exige ≥8 tokens y `mxc/myc ≥ 1`, con errores claros.
+- **SPEC2D truncado (`leer_espectro_swan` e `leer_espectro_temporal`)**: leer la matriz
+  más allá del fin de archivo daba `IndexError`/arreglo ragged. Ahora se valida que haya
+  frecuencias/direcciones declaradas y que las filas existan y tengan el ancho correcto,
+  lanzando `ValueError` "truncado" entendible. El temporal devuelve `None` si falta el
+  encabezado AFREQ/CDIR (no es SPEC2D válido).
+*Tests:* 6 nuevos en `test_regresion.py` (.mat sin var / columnas, CGRID mxc=0 en ambos
+módulos, CGRID truncado, SPEC2D estacionario y temporal truncados). 69 en verde.
+
+### 2026-06-27 · ALTA #3 y #4 — falso éxito de SWAN por `norm_end` global (Cursor)
+*Qué:* `swan_runner.correr_caso` decidía el éxito con `(carpeta/"norm_end").exists()`,
+pero `norm_end` es un **único archivo por carpeta** (SWAN no lo nombra por caso). Si el
+dominio grande lo dejaba y luego el nido fallaba sin reescribirlo, el nido **heredaba el
+éxito** del grande. Además el `.erf` (terminación con errores) sólo se usaba para el log,
+no para el veredicto. *Por qué:* un par anidado con el nido roto reportaba OK y el
+asistente dejaba avanzar a graficar resultados inválidos.
+*Arreglo (ALTA #3, `swan_runner.py`):* antes de cada caso se borran el `norm_end` global
+y el `<caso>.erf` viejo; el veredicto pasa a ser `ok = norm_end.exists() and not <caso>.erf`,
+así refleja SÓLO ese caso. `correr_swan` ya hacía `ok_global &= correr_caso(...)`, que
+ahora es correcto.
+*Arreglo (ALTA #4, `pasos_modelar.PasoCorrer`):* se separa "aún no corre" de "corrió y
+falló" con un flag `corrido`; el log dice "terminó normalmente" vs "terminó CON ERRORES
+(.prt/.erf)" y `validar()` bloquea con un mensaje claro cuando `ok` es False (antes decía
+"SWAN terminó con avisos" y el mensaje de validación implicaba que no había corrido).
+*Tests:* `test_correr_swan_no_hereda_exito_si_falla_el_nido` (SWAN simulado: grande deja
+norm_end, nido deja .erf y stale norm_end → `ok_global=False`), `test_correr_swan_ok_si_
+todos_los_casos_terminan` y `test_paso_correr_distingue_no_corrido_fallo_y_ok`. 63 en verde.
+
+### 2026-06-27 · ALTA #2 — `validacion._chequeo_tiempo` con series cortas (Cursor)
+*Qué:* `_chequeo_tiempo` calculaba `pd.Series(dif).mode()[0]` sobre los intervalos
+entre timestamps; con una serie de 0 o 1 paso, `dif` queda vacío y `mode()` también,
+así que `[0]` lanzaba `IndexError` y tumbaba toda la validación. *Por qué:* el chequeo
+debe degradar con gracia, no reventar, cuando no hay intervalos que comparar.
+*Arreglo:* guard `if len(t) < 2:` que devuelve `(0, "serie de N paso(s): sin intervalos
+que evaluar")` antes de tocar `mode()`. El camino normal (≥2 pasos) no cambió.
+*Tests:* 3 nuevos en `test_regresion.py` (1 paso, serie vacía, y caso normal con hueco
++ duplicado que sigue contando 2). `test_regresion.py`+`test_nesting.py` en verde (60).
+
+> ⚠️ **Coordinación:** ALTA #1 (`PasoRevision`) lo implementó **Claude Code** en paralelo
+> (cambios sin commitear en `pasos_analizar.py` y `test_asistente.py`). Cursor NO lo tocó.
+> Su test `test_paso_revision_avanza_con_datos_buenos` estuvo **rojo** un rato, pero el
+> rojo era consecuencia de ALTA #7 (Gumbel reventaba en `evaluar` con la serie de 1 año
+> del test), no de la implementación de Claude Code. Al corregir ALTA #7 quedó en verde.
+
 ### 2026-06-27 · Revisión QA — corrección de los 4 bugs CRÍTICOS (Cursor)
 Tras una auditoría QA de todos los `.py`, se corrigieron los 4 fallos que podían
 tumbar la app o eran riesgo de seguridad. **Los 72 tests pasan** tras los cambios.
@@ -34,17 +160,15 @@ no por código.
    helper `_asignar_campos()` que detecta la colisión, **avisa** y conserva el
    archivo **más reciente** (`mtime`).
 
-**Pendiente: bugs de ALTA prioridad (siguiente tanda, aún sin tocar):**
-1. `pasos_analizar.PasoRevision` deja avanzar con datos rotos (hereda `validar()→True`).
-2. `validacion._chequeo_tiempo` revienta con serie de 1 timestamp (`mode()[0]` IndexError).
-3. `swan_runner`: `norm_end` es global por carpeta, no por caso → falso éxito si falla el 2º caso.
-4. `pasos_modelar.PasoCorrer` trata SWAN con errores como OK (`bool(ok)` solo por `norm_end`).
-5. I/O frágil: `.mat` sin variable esperada (`io_oleaje`), CGRID `mxc=0` (división por cero),
-   BLOCK/SPEC2D truncado (`io_swan`/`io_swan_nonst`).
-6. ERA5 cacheada sin validar (`io_era5`); HTTP sin chequeo de status (`io_batimetria`).
-7. Gumbel sin protección con series cortas (`borde_oleaje`, `productos`).
-8. Carreras GUI/hilos: callbacks sin `winfo_exists()` y vistas que no cancelan tareas
-   (`app_tablero`, `gui_swan`).
+**Pendiente: bugs de ALTA prioridad (siguiente tanda):**
+1. `pasos_analizar.PasoRevision` deja avanzar con datos rotos — **EN CURSO (Claude Code)**.
+2. ✅ `validacion._chequeo_tiempo` con serie de 1 timestamp — **HECHO (Cursor, ver arriba)**.
+3. ✅ `swan_runner`: `norm_end` global por carpeta → falso éxito — **HECHO (Cursor, ver arriba)**.
+4. ✅ `pasos_modelar.PasoCorrer` trataba SWAN con errores como OK — **HECHO (Cursor, ver arriba)**.
+5. ✅ I/O frágil (`.mat` sin variable, CGRID `mxc=0`, SPEC2D truncado) — **HECHO (Cursor)**.
+6. ✅ ERA5 cacheada sin validar + HTTP sin chequeo de status — **HECHO (Cursor)**.
+7. ✅ Gumbel sin protección con series cortas (`productos`; `borde_oleaje` ya estaba) — **HECHO (Cursor)**.
+8. ✅ Carreras GUI/hilos (winfo_exists + cancelar al cerrar) — **HECHO (Cursor)**.
 
 **Regla de trabajo:** correr `python -m pytest test_regresion.py test_asistente.py
 test_nesting.py -q` tras cada cambio (sin sandbox en este equipo) y mantener la

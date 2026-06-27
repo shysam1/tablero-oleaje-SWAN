@@ -114,9 +114,43 @@ class VentanaSwan(tk.Toplevel):
         self._proc = None                  # proceso SWAN en curso (para cancelar)
         self._cancelar = threading.Event()
         self._construir()
+        # Cerrar la ventana mientras corre SWAN debe cancelar la corrida y matar el
+        # proceso: si no, queda un swan.exe huérfano y los callbacks del hilo tocan
+        # widgets ya destruidos.
+        self.protocol("WM_DELETE_WINDOW", self._al_cerrar)
         if borde_inicial:
             self.aplicar_borde(borde_inicial)
             self.nb.select(1)        # deja activa la pestaña "Armar y correr"
+
+    def _vivo(self):
+        """True si la ventana sigue existiendo (no tocar widgets ya destruidos)."""
+        try:
+            return bool(self.winfo_exists())
+        except tk.TclError:
+            return False
+
+    def _marshal(self, func, *args):
+        """
+        Agenda func(*args) en el hilo de la GUI desde un hilo de trabajo. Ignora
+        en silencio si la ventana ya se cerró (evita TclError "invalid command").
+        """
+        def _run():
+            if self._vivo():
+                func(*args)
+        try:
+            self.after(0, _run)
+        except tk.TclError:
+            pass
+
+    def _al_cerrar(self):
+        """Cancela la corrida en curso (mata swan.exe) y cierra la ventana."""
+        self._cancelar.set()
+        if self._proc and self._proc.poll() is None:
+            try:
+                self._proc.terminate()
+            except Exception:
+                pass
+        self.destroy()
 
     # ------------------------------------------------------------------ UI
     def _construir(self):
@@ -361,7 +395,7 @@ class VentanaSwan(tk.Toplevel):
         try:
             ruta, meta = io_batimetria.generar_bot(malla, zona, destino, raster=raster)
         except Exception as e:
-            self.after(0, lambda: self.log.insert("end", f"Error batimetría: {e}\n"))
+            self._marshal(lambda: self.log.insert("end", f"Error batimetría: {e}\n"))
             return
 
         def ok():
@@ -372,7 +406,7 @@ class VentanaSwan(tk.Toplevel):
                 f"{meta['prof_min']:.1f} a {meta['prof_max']:.1f} m, "
                 f"{meta['pct_tierra']:.0f}% en tierra.\n")
             self.log.see("end")
-        self.after(0, ok)
+        self._marshal(ok)
 
     def _definir_malla_latlon(self):
         """Calcula la malla UTM desde lat/lon y rellena los campos del formulario."""
@@ -398,14 +432,14 @@ class VentanaSwan(tk.Toplevel):
         self.log.see("end")
 
     def _log(self, msg):
-        self.after(0, lambda: (self.log.insert("end", msg + "\n"),
+        self._marshal(lambda: (self.log.insert("end", msg + "\n"),
                                self.log.see("end")))
 
     def _set_progreso(self, i, n):
         # SWAN no anuncia cuántas iteraciones hará, así que el avance dentro de un
         # caso no es un % fiable: la barra va en modo indeterminado (gira) y aquí
         # sólo se actualiza el texto del caso en curso.
-        self.after(0, lambda: self.estado.config(
+        self._marshal(lambda: self.estado.config(
             text=f"Corriendo caso {min(i + 1, n)}/{n}…", foreground="#d18616"))
 
     def _bloquear(self, activo):
@@ -506,11 +540,11 @@ class VentanaSwan(tk.Toplevel):
                 on_proc=lambda p: setattr(self, "_proc", p),
                 cancelado=self._cancelar.is_set)
             if self._cancelar.is_set():
-                self.after(0, self._cancelado_fin)
+                self._marshal(self._cancelado_fin)
             else:
-                self.after(0, self._terminar, ok, nuevas, carpeta)
+                self._marshal(self._terminar, ok, nuevas, carpeta)
         except Exception:
-            self.after(0, self._error, traceback.format_exc())
+            self._marshal(self._error, traceback.format_exc())
 
     def _cancelado_fin(self):
         self._bloquear(False)              # detiene y resetea la barra

@@ -51,6 +51,10 @@ def _chequeo_peralte(ds):
 def _chequeo_tiempo(ds):
     """Consistencia temporal: detecta huecos y registros duplicados."""
     t = pd.to_datetime(ds["time"].values)
+    # Con 0 o 1 paso no hay intervalos que comparar: mode() vendría vacío y
+    # mode()[0] reventaría con IndexError. No hay nada que evaluar.
+    if len(t) < 2:
+        return 0, f"serie de {len(t)} paso(s): sin intervalos que evaluar"
     dif = t[1:] - t[:-1]
     paso = pd.Series(dif).mode()[0]          # paso de muestreo más frecuente
     duplicados = int((dif == pd.Timedelta(0)).sum())

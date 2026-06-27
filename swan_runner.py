@@ -115,6 +115,21 @@ def correr_caso(carpeta, caso, log=None, on_proc=None):
     _validar_nombre_caso(caso)
     if log:
         log(f"=== Corriendo SWAN: {caso} ===")
+    # `norm_end` es un ÚNICO archivo por carpeta que SWAN (re)escribe al terminar
+    # normalmente: no lleva el nombre del caso. Si quedó de un caso anterior (p. ej.
+    # el dominio grande), un caso posterior que falle lo heredaría y daría un falso
+    # "terminó normalmente". Igual pasa con un `.erf` viejo de ESTE caso. Se borran
+    # antes de correr para que el veredicto sea de este caso, no del previo.
+    norm_end = carpeta / "norm_end"
+    try:
+        norm_end.unlink()
+    except FileNotFoundError:
+        pass
+    for erf_viejo in carpeta.glob(f"{caso}.erf"):
+        try:
+            erf_viejo.unlink()
+        except OSError:
+            pass
     # ABOVE_NORMAL se hereda a swan.exe; evita que Windows lo postergue.
     flags = getattr(subprocess, "ABOVE_NORMAL_PRIORITY_CLASS", 0)
     # Sin shell=True: se resuelve el ejecutable de swanrun en el PATH y se pasa el
@@ -141,10 +156,13 @@ def correr_caso(carpeta, caso, log=None, on_proc=None):
             log(linea.rstrip())
     proc.wait()
 
-    ok = (carpeta / "norm_end").exists()
+    # norm_end refleja SÓLO este caso (se borró antes de correr); un `.erf` de este
+    # caso marca terminación con errores aunque norm_end exista. Ambos cuentan para
+    # el veredicto, no sólo para el log.
     erf = list(carpeta.glob(f"{caso}.erf"))
+    ok = norm_end.exists() and not erf
     if log:
-        if ok and not erf:
+        if ok:
             log(f"--- {caso}: terminó normalmente ---")
         elif erf:
             log(f"--- {caso}: terminó con errores (ver {erf[0].name}) ---")

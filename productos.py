@@ -116,9 +116,20 @@ def _dib_extremos(ax, r):
 
 
 # --- Períodos de retorno: ajuste de Gumbel a los máximos anuales ---
+def _n_anios(ds):
+    """Número de años distintos con dato (tamaño de la serie de máximos anuales)."""
+    return int(ds["Hs"].groupby("time.year").max().sizes.get("year", 0))
+
+
 def _calc_retorno(ds, periodos=(2, 5, 10, 25, 50, 100)):
     maximos = np.sort(ds["Hs"].groupby("time.year").max().values)
     n = maximos.size
+    # Con <2 máximos anuales el ajuste de Gumbel es degenerado (scale→0): la
+    # fit produce overflow/NaN y la curva no tiene sentido. Se exige ≥2 años,
+    # igual que borde_oleaje; 'evaluar' además lo marca como no disponible.
+    if n < 2:
+        raise ValueError(
+            f"El ajuste de Gumbel necesita ≥ 2 años de máximos anuales (hay {n}).")
 
     # Ajuste de Gumbel (valores extremos tipo I) por máxima verosimilitud.
     loc, scale = stats.gumbel_r.fit(maximos)
@@ -256,7 +267,9 @@ PRODUCTOS = [
     {"nombre": "Régimen extremo (máx. anual)", "requiere": ["Hs"], "proyeccion": None,
      "calcular": _calc_extremos, "dibujar": _dib_extremos},
     {"nombre": "Períodos de retorno (Gumbel)", "requiere": ["Hs"], "proyeccion": None,
-     "calcular": _calc_retorno, "dibujar": _dib_retorno},
+     "calcular": _calc_retorno, "dibujar": _dib_retorno,
+     "aplicable": lambda ds: _n_anios(ds) >= 2,
+     "motivo_inaplicable": "≥ 2 años de datos para el ajuste de Gumbel"},
     {"nombre": "Distribución de Hs (Rayleigh)", "requiere": ["Hs"], "proyeccion": None,
      "calcular": _calc_rayleigh, "dibujar": _dib_rayleigh},
     {"nombre": "Histograma conjunto Hs–Tp", "requiere": ["Hs", "Tp"], "proyeccion": None,
@@ -284,6 +297,13 @@ def evaluar(ds):
     informe = []
     for p in PRODUCTOS:
         faltan = [v for v in p["requiere"] if v not in ds.data_vars]
+        # Algunos productos requieren además una condición sobre los datos (p. ej.
+        # Gumbel necesita ≥2 años); si no se cumple, se reporta como "falta" para
+        # que el motivo aparezca en el informe y no se intente calcular (evita el
+        # overflow del ajuste degenerado).
+        aplicable_fn = p.get("aplicable")
+        if not faltan and aplicable_fn is not None and not aplicable_fn(ds):
+            faltan = [p.get("motivo_inaplicable", "datos insuficientes")]
         disponible = (not faltan) and (p["calcular"] is not None)
         informe.append({
             "nombre": p["nombre"], "disponible": disponible, "faltan": faltan,

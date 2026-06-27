@@ -132,15 +132,45 @@ def _url_erddap(lat_min, lat_max, lon_min, lon_max):
 def descargar_raster(lat_min, lat_max, lon_min, lon_max, destino):
     """Descarga el recorte de batimetría por HTTP y lo devuelve normalizado."""
     import urllib.request
+    import urllib.error
     url = _url_erddap(lat_min, lat_max, lon_min, lon_max)
     destino = Path(destino)
     destino.parent.mkdir(parents=True, exist_ok=True)
     try:
-        urllib.request.urlretrieve(url, destino)
+        with urllib.request.urlopen(url, timeout=120) as resp:
+            status = getattr(resp, "status", None) or resp.getcode()
+            tipo = resp.headers.get_content_type()
+            cuerpo = resp.read()
+    except urllib.error.HTTPError as e:
+        # ERDDAP devuelve el detalle del error en el cuerpo; incluirlo ayuda a
+        # entender (bbox fuera de rango, dataset movido, etc.).
+        detalle = ""
+        try:
+            detalle = e.read().decode("utf-8", "ignore")[:300]
+        except Exception:
+            pass
+        raise RuntimeError(
+            f"El servidor de batimetría respondió {e.code} {e.reason}. "
+            f"{detalle}".strip()) from e
     except Exception as e:
         raise RuntimeError(
             "No se pudo descargar la batimetría (¿sin internet?). "
             "Usa un archivo de batimetría local.") from e
+
+    # ERDDAP a veces responde 200 con un cuerpo de error (texto/HTML) en vez del
+    # .nc: guardar eso a ciegas haría que xarray reventara con un error críptico.
+    # Se valida por código, content-type y los bytes mágicos de NetCDF (clásico
+    # 'CDF...') o HDF5/NetCDF-4 ('\x89HDF').
+    if status and status != 200:
+        raise RuntimeError(f"El servidor de batimetría respondió código {status}.")
+    es_netcdf = cuerpo[:3] == b"CDF" or cuerpo[:4] == b"\x89HDF"
+    if "netcdf" not in (tipo or "") and not es_netcdf:
+        muestra = cuerpo[:300].decode("utf-8", "ignore").strip()
+        raise RuntimeError(
+            "La respuesta del servidor de batimetría no es un NetCDF válido "
+            f"(content-type {tipo!r}). Usa un archivo de batimetría local. "
+            f"Detalle: {muestra}")
+    destino.write_bytes(cuerpo)
     return _normalizar_raster(xr.open_dataset(destino))
 
 

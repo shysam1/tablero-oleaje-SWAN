@@ -398,10 +398,12 @@ class PasoCorrer(asistente.Paso):
         ttk.Button(self, text="Generar .swn y correr",
                    command=self._correr).pack(anchor="w", pady=(8, 0))
         self.ok = False
+        self.corrido = False               # distingue "aún no corre" de "corrió y falló"
 
     def entrar(self, contexto):
         self._contexto = contexto
         self.ok = False
+        self.corrido = False
 
     def _correr(self):
         ctx = self._contexto
@@ -474,15 +476,22 @@ class PasoCorrer(asistente.Paso):
             return ok
 
         def al_terminar(ok):
+            self.corrido = True
             self.ok = bool(ok)
             self.wizard.log.insert(
-                "end", "SWAN terminó.\n" if ok else "SWAN terminó con avisos.\n")
+                "end",
+                "SWAN terminó normalmente.\n" if self.ok else
+                "SWAN terminó CON ERRORES: ningún caso alcanzó 'norm_end' o se generó "
+                "un .erf. Revisa el log y los .prt/.erf; no se puede continuar.\n")
 
         self.wizard.tarea(trabajo, al_terminar)
 
     def validar(self):
-        if not self.ok:
+        if not self.corrido:
             return False, "Corre SWAN y espera a que termine antes de continuar."
+        if not self.ok:
+            return False, ("SWAN terminó con errores: ningún resultado válido. "
+                           "Revisa el log (.prt/.erf) y corrige antes de continuar.")
         return True, ""
 
     def recoger(self, contexto):
