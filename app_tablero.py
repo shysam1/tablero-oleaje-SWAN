@@ -57,6 +57,7 @@ class VistaInicio(ttk.Frame):
 
         tarjetas = ttk.Frame(self)
         tarjetas.pack(fill="both", expand=True)
+        tarjetas.rowconfigure(0, weight=1)
         datos = [
             ("📈  Analizar oleaje\nen un punto",
              "Datos propios o descargados de ERA5 → curvas, régimen extremo, "
@@ -99,8 +100,9 @@ class VistaAvanzado(ttk.Frame):
     def _construir_widgets(self):
         fila_top = ttk.Frame(self)
         fila_top.pack(fill="x")
-        ttk.Button(fila_top, text="← Inicio",
-                   command=self.al_inicio).pack(side="left")
+        self.boton_inicio = ttk.Button(fila_top, text="← Inicio",
+                                       command=self.al_inicio)
+        self.boton_inicio.pack(side="left")
         ttk.Label(fila_top, text="Modo avanzado",
                   font=("Segoe UI", 16, "bold")).pack(side="left", padx=(10, 0))
         ttk.Label(self, text="Serie temporal (.mat/.csv/.nc) → curvas. "
@@ -182,6 +184,7 @@ class VistaAvanzado(ttk.Frame):
             except ValueError as e:
                 messagebox.showerror("Datos inválidos", str(e)); return
             win.destroy()
+            self.boton_inicio.config(state="disabled")
             self.estado.config(text="Descargando ERA5…", foreground="#d18616")
             self.salida.delete("1.0", "end")
             threading.Thread(target=self._descargar_era5, daemon=True,
@@ -267,6 +270,7 @@ class VistaAvanzado(ttk.Frame):
             messagebox.showerror("Archivo no encontrado", f"No existe:\n{ruta}")
             return
         self.boton_crear.config(state="disabled")
+        self.boton_inicio.config(state="disabled")
         self.estado.config(text="Procesando…", foreground="#d18616")
         self.progreso["value"] = 0
         self.salida.delete("1.0", "end")
@@ -311,26 +315,34 @@ class VistaAvanzado(ttk.Frame):
         return tablero_oleaje.generar_tablero(str(ruta))
 
     def _set_progreso(self, i, n):
+        if not self.winfo_exists():
+            return
         self.progreso["maximum"] = n
         self.progreso["value"] = i + 1
         self.estado.config(text=f"Generando video… frame {i + 1}/{n}",
                            foreground="#d18616")
 
     def _exito(self, reporte, ruta_salida):
+        if not self.winfo_exists():
+            return
         self.salida.insert("end", reporte + f"\nResultado: {ruta_salida}\n")
         self.estado.config(text="Listo.", foreground="#1f6feb")
         self.progreso["value"] = 0
         self.boton_crear.config(state="normal")
+        self.boton_inicio.config(state="normal")
         try:
             os.startfile(ruta_salida)
         except Exception:
             pass
 
     def _error(self, mensaje):
+        if not self.winfo_exists():
+            return
         self.salida.insert("end", mensaje)
         self.estado.config(text="Error al generar el resultado.", foreground="#d1242f")
         self.progreso["value"] = 0
         self.boton_crear.config(state="normal")
+        self.boton_inicio.config(state="normal")
         messagebox.showerror("Error",
                              "Ocurrió un problema. Revisa el detalle en la ventana.")
 
@@ -372,7 +384,12 @@ class AppTablero(tk.Tk):
         """Reemplaza la vista visible por una nueva instancia de `nombre`."""
         if self._vista is not None:
             self._vista.destroy()
-        self._vista = self._crear_vista(nombre)
+        try:
+            self._vista = self._crear_vista(nombre)
+        except ValueError as e:
+            messagebox.showinfo("Aún no disponible",
+                                f"Este camino todavía no está disponible.\n({e})")
+            self._vista = self._crear_vista("inicio")
         self._vista.grid(row=0, column=0, sticky="nsew")
 
 

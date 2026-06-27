@@ -143,8 +143,9 @@ class Wizard(ttk.Frame):
         # Botones de navegación.
         fila_b = ttk.Frame(self)
         fila_b.pack(fill="x", pady=(8, 0))
-        ttk.Button(fila_b, text="← Inicio",
-                   command=self._volver_inicio).pack(side="left")
+        self.boton_inicio = ttk.Button(fila_b, text="← Inicio",
+                                       command=self._volver_inicio)
+        self.boton_inicio.pack(side="left")
         self.boton_sig = ttk.Button(fila_b, text="Siguiente →",
                                     command=self._siguiente)
         self.boton_sig.pack(side="right")
@@ -196,8 +197,12 @@ class Wizard(ttk.Frame):
         self._bloquear(True)
 
         def log(msg):
-            self.after(0, lambda: (self.log.insert("end", msg + "\n"),
-                                   self.log.see("end")))
+            def _ins():
+                if not self.winfo_exists():
+                    return
+                self.log.insert("end", msg + "\n")
+                self.log.see("end")
+            self.after(0, _ins)
 
         def progreso(i, n):
             self.after(0, self._set_progreso, i, n)
@@ -213,6 +218,8 @@ class Wizard(ttk.Frame):
         threading.Thread(target=worker, daemon=True).start()
 
     def _set_progreso(self, i, n):
+        if not self.winfo_exists():
+            return
         self.progreso.config(mode="determinate", maximum=max(n, 1), value=i + 1)
         self.estado.config(text=f"Procesando… {i + 1}/{n}", foreground="#d18616")
 
@@ -220,6 +227,7 @@ class Wizard(ttk.Frame):
         estado = "disabled" if activo else "normal"
         self.boton_sig.config(state=estado)
         self.boton_atras.config(state=estado)
+        self.boton_inicio.config(state=estado)
         if activo:
             self.progreso.config(mode="indeterminate")
             self.progreso.start(12)
@@ -229,6 +237,8 @@ class Wizard(ttk.Frame):
             self.progreso.config(mode="determinate", value=0)
 
     def _fin_tarea(self, resultado, al_terminar, error):
+        if not self.winfo_exists():
+            return
         self._tarea_activa = False
         self._bloquear(False)
         if error:
