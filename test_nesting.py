@@ -88,3 +88,12 @@ def test_escribir_par_anidado_crea_dos_swn_enlazados(tmp_path):
     assert "BOU NEST 'nest1' CLOSED" in tn
     assert "CGRID 36480 32229" in tn
     assert "BOUN SIDE" not in tn
+
+
+def test_escribir_par_anidado_punto_espectral_va_al_nido(tmp_path):
+    pe = {"x": 42000, "y": 37000, "archivo": "Esp.txt"}
+    rg, rn = swan_builder.escribir_par_anidado(
+        tmp_path, "G", "N", MALLA_G, {"archivo": "g.bot"}, BORDES,
+        MALLA_N, {"archivo": "n.bot"}, punto_espectral=pe)
+    assert "POINTS 'SpecOut' 42000 37000" in rn.read_text()
+    assert "POINTS" not in rg.read_text()
