@@ -1,14 +1,16 @@
 """
-Pasos del camino "Modelar propagación con SWAN" (un dominio en v1).
+Pasos del camino "Modelar propagación con SWAN" (1 o 2 dominios).
 
 1. Malla: por lat/lon (centro + tamaño + celda) → geo_malla.
 2. Batimetría: descarga automática (GEBCO/ETOPO) o .bot propio → io_batimetria.
 3. Borde: manual o derivado de ERA5/serie → borde_oleaje.
-4. Correr SWAN: validar_caso → escribir_caso → swan_runner.
-5. Ver: tablero_swan del resultado.
+4. Nido (opcional): dominio anidado más fino; si se activa añade un segundo
+   elemento a `contexto["dominios"]`.
+5. Correr SWAN: valida y escribe 1 caso simple o un par anidado según cuántos
+   dominios haya en `contexto["dominios"]`; llama a swan_runner.
+6. Ver: tablero_swan del resultado.
 
-El contexto guarda `dominios` como lista (preparado para el nido del 2º
-proyecto): en v1 hay un único dominio.
+`contexto["dominios"]` es una lista de 1 o 2 dicts de dominio.
 """
 
 import os
@@ -226,6 +228,160 @@ class PasoBorde(asistente.Paso):
         _dominio_actual(contexto)["bordes"] = bordes
 
 
+class PasoNido(asistente.Paso):
+    titulo = "Dominio anidado (opcional)"
+
+    def __init__(self, master):
+        super().__init__(master)
+        self.activo = tk.BooleanVar(value=False)
+        ttk.Checkbutton(self, text="Agregar un dominio anidado (nido) más fino",
+                        variable=self.activo, command=self._refrescar).pack(anchor="w")
+        self.marco = ttk.Frame(self)
+        self.marco.pack(fill="x", padx=(20, 0), pady=(6, 0))
+        self._editables = []               # widgets a habilitar/deshabilitar
+
+        # Malla del nido
+        self.campos = {}
+        for etiqueta, clave, valor in (
+                ("Latitud centro", "lat", "-36.97"),
+                ("Longitud centro", "lon", "-73.15"),
+                ("Ancho [km]", "ancho", "9"),
+                ("Alto [km]", "alto", "10"),
+                ("Tamaño de celda [m]", "celda", "200")):
+            f = ttk.Frame(self.marco); f.pack(fill="x", pady=2)
+            ttk.Label(f, text=etiqueta, width=20).pack(side="left")
+            var = tk.StringVar(value=valor)
+            ent = ttk.Entry(f, textvariable=var, width=14); ent.pack(side="left")
+            self.campos[clave] = var
+            self._editables.append(ent)
+        self.boton_malla = ttk.Button(self.marco, text="Calcular malla del nido",
+                                      command=self._calcular)
+        self.boton_malla.pack(anchor="w", pady=(4, 0))
+        self._editables.append(self.boton_malla)
+        self.detalle = ttk.Label(self.marco, foreground="#555")
+        self.detalle.pack(anchor="w")
+
+        # Batimetría del nido
+        self.bot = tk.StringVar()
+        fb = ttk.Frame(self.marco); fb.pack(fill="x", pady=(6, 0))
+        self.boton_bati = ttk.Button(fb, text="Generar batimetría del nido",
+                                     command=self._bati)
+        self.boton_bati.pack(side="left")
+        self.boton_bot = ttk.Button(fb, text="Usar .bot propio…",
+                                    command=self._elegir_bot)
+        self.boton_bot.pack(side="left", padx=(6, 0))
+        self._editables += [self.boton_bati, self.boton_bot]
+        ttk.Label(self.marco, textvariable=self.bot, foreground="#555").pack(anchor="w")
+
+        # Punto espectral
+        self.con_espectro = tk.BooleanVar(value=False)
+        self.check_esp = ttk.Checkbutton(self.marco, text="Salida espectral en un punto",
+                                         variable=self.con_espectro)
+        self.check_esp.pack(anchor="w", pady=(6, 0))
+        self._editables.append(self.check_esp)
+        fe = ttk.Frame(self.marco); fe.pack(fill="x")
+        self.pe = {}
+        for etiqueta, clave, valor in (("Lat punto", "lat", "-36.98"),
+                                       ("Lon punto", "lon", "-73.13")):
+            ttk.Label(fe, text=etiqueta).pack(side="left")
+            var = tk.StringVar(value=valor)
+            ent = ttk.Entry(fe, textvariable=var, width=10)
+            ent.pack(side="left", padx=(2, 8))
+            self.pe[clave] = var
+            self._editables.append(ent)
+
+        self.malla = None
+        self._refrescar()
+
+    def entrar(self, contexto):
+        self._contexto = contexto
+
+    def _refrescar(self):
+        estado = "normal" if self.activo.get() else "disabled"
+        for w in self._editables:
+            try:
+                w.config(state=estado)
+            except tk.TclError:
+                pass
+
+    def _calcular(self):
+        try:
+            self.malla = geo_malla.malla_desde_latlon(
+                float(self.campos["lat"].get()), float(self.campos["lon"].get()),
+                float(self.campos["ancho"].get()), float(self.campos["alto"].get()),
+                float(self.campos["celda"].get()))
+        except (ValueError, KeyError) as e:
+            messagebox.showerror("Datos inválidos", str(e)); return
+        m = self.malla
+        self.detalle.config(text=f"Nido: zona UTM {m['zona_utm']} · "
+                            f"{m['mxc']}×{m['myc']} celdas.")
+
+    def _bati(self):
+        if self.malla is None:
+            messagebox.showwarning("Falta la malla", "Calcula la malla del nido primero.")
+            return
+        destino = self._contexto.get("carpeta_caso")
+        if not destino:
+            messagebox.showwarning("Falta carpeta",
+                                   "Genera primero la batimetría del dominio grande "
+                                   "(define la carpeta del caso).")
+            return
+        malla = {k: v for k, v in self.malla.items() if k != "zona_utm"}
+
+        def trabajo(log, progreso):
+            ruta, meta = io_batimetria.generar_bot(
+                malla, self.malla["zona_utm"], destino, nombre="bati_nido.bot")
+            log(f"Batimetría del nido: {ruta.name} — prof. {meta['prof_min']:.1f} a "
+                f"{meta['prof_max']:.1f} m, {meta['pct_tierra']:.0f}% en tierra.")
+            return str(ruta)
+
+        def al_terminar(res):
+            if res:
+                self.bot.set(res)
+
+        self.wizard.tarea(trabajo, al_terminar)
+
+    def _elegir_bot(self):
+        r = filedialog.askopenfilename(
+            title="Batimetría del nido (.bot)",
+            initialdir=config.obtener("ultima_carpeta_swan"),
+            filetypes=[("Batimetría", "*.bot"), ("Todos", "*.*")])
+        if r:
+            self.bot.set(r)
+
+    def validar(self):
+        if not self.activo.get():
+            return True, ""                 # nido opcional, apagado
+        if self.malla is None:
+            return False, "Calcula la malla del nido o desactiva el dominio anidado."
+        grande = self._contexto.get("dominios", [{}])[0].get("malla")
+        if grande:
+            errores, _ = swan_builder.validar_caso_anidado(grande, self.malla)
+            if errores:
+                return False, "\n".join(errores)
+        b = self.bot.get().strip()
+        if not b or not Path(b).exists():
+            return False, "Genera o selecciona la batimetría del nido."
+        return True, ""
+
+    def recoger(self, contexto):
+        if not self.activo.get():
+            return
+        dom = {"malla": self.malla, "bot": self.bot.get().strip()}
+        if self.con_espectro.get():
+            try:
+                import pyproj
+                este, norte = pyproj.Transformer.from_crs(
+                    "EPSG:4326", f"EPSG:{io_batimetria.epsg_utm(self.malla['zona_utm'])}",
+                    always_xy=True).transform(float(self.pe["lon"].get()),
+                                              float(self.pe["lat"].get()))
+                dom["punto_espectral"] = {"x": round(este), "y": round(norte),
+                                          "archivo": "Espectro_Punto.txt"}
+            except Exception:
+                dom["punto_espectral"] = None
+        contexto["dominios"].append(dom)
+
+
 class PasoCorrer(asistente.Paso):
     titulo = "Correr SWAN"
 
@@ -245,40 +401,74 @@ class PasoCorrer(asistente.Paso):
 
     def _correr(self):
         ctx = self._contexto
-        dom = ctx.get("dominios", [{}])[0]
-        # Red de seguridad: los pasos previos debieron dejar todo listo.
-        faltan = [k for k in ("malla", "bot", "bordes") if k not in dom]
-        if faltan or not ctx.get("carpeta_caso"):
+        dominios = ctx.get("dominios", [])
+        if not dominios or not ctx.get("carpeta_caso"):
             messagebox.showerror(
                 "Faltan datos",
                 "Completa malla, batimetría y borde antes de correr SWAN.")
             return
+        g = dominios[0]
+        if any(k not in g for k in ("malla", "bot", "bordes")):
+            messagebox.showerror("Faltan datos",
+                                 "Completa malla, batimetría y borde del dominio grande.")
+            return
         destino = Path(ctx["carpeta_caso"])
-        bot = Path(dom["bot"])
-        # Copiar la batimetría a la carpeta del caso (rutas relativas en el .swn).
-        if bot.parent != destino:
-            (destino / bot.name).write_bytes(bot.read_bytes())
-        # Copia de la malla sin 'zona_utm' (swan_builder.construir_swn no la espera).
-        malla = dict(dom["malla"]); malla.pop("zona_utm", None)
-        bordes = dom["bordes"]
+        nombre = self.nombre.get().strip() or "MiCaso"
+        bot_g = Path(g["bot"])
+        if bot_g.parent != destino:
+            (destino / bot_g.name).write_bytes(bot_g.read_bytes())
+        malla_g = {k: v for k, v in g["malla"].items() if k != "zona_utm"}
+        bordes = g["bordes"]
 
         errores, avisos = swan_builder.validar_caso(
-            malla, {"archivo": bot.name}, bordes, carpeta=destino)
+            malla_g, {"archivo": bot_g.name}, bordes, carpeta=destino)
+
+        anidado = len(dominios) >= 2
+        if anidado:
+            n = dominios[1]
+            if any(k not in n for k in ("malla", "bot")):
+                messagebox.showerror("Faltan datos",
+                                     "Completa malla y batimetría del nido.")
+                return
+            bot_n = Path(n["bot"])
+            if bot_n.parent != destino:
+                (destino / bot_n.name).write_bytes(bot_n.read_bytes())
+            malla_n = {k: v for k, v in n["malla"].items() if k != "zona_utm"}
+            e_an, a_an = swan_builder.validar_caso_anidado(g["malla"], n["malla"])
+            errores += e_an
+            avisos += a_an
+            e_n, a_n = swan_builder.validar_caso(
+                malla_n, {"archivo": bot_n.name}, [], carpeta=destino,
+                requiere_bordes=False)
+            errores += e_n
+            avisos += a_n
+
         if errores:
             messagebox.showerror("Revisa el caso", "\n\n".join(errores)); return
         if avisos and not messagebox.askyesno(
                 "Advertencias", "\n\n".join(avisos) + "\n\n¿Continuar igual?"):
             return
-        nombre = self.nombre.get().strip() or "MiCaso"
-        ruta_swn = swan_builder.escribir_caso(
-            destino, nombre, nombre=nombre, malla=malla,
-            batimetria={"archivo": bot.name}, bordes=bordes,
-            salidas=("Hs", "Tp", "Dir"), estacionario=True)
-        self.wizard.log.insert("end", f"Caso generado: {ruta_swn}\n")
+
+        if anidado:
+            n = dominios[1]
+            malla_n = {k: v for k, v in n["malla"].items() if k != "zona_utm"}
+            ruta_g, ruta_n = swan_builder.escribir_par_anidado(
+                destino, nombre, nombre + "_nido",
+                malla_g, {"archivo": bot_g.name}, bordes,
+                malla_n, {"archivo": Path(n["bot"]).name},
+                salidas=("Hs", "Tp", "Dir"),
+                punto_espectral=n.get("punto_espectral"))
+            self.wizard.log.insert("end",
+                                   f"Par anidado generado: {ruta_g.name}, {ruta_n.name}\n")
+        else:
+            ruta_swn = swan_builder.escribir_caso(
+                destino, nombre, nombre=nombre, malla=malla_g,
+                batimetria={"archivo": bot_g.name}, bordes=bordes,
+                salidas=("Hs", "Tp", "Dir"), estacionario=True)
+            self.wizard.log.insert("end", f"Caso generado: {ruta_swn}\n")
 
         def trabajo(log, progreso):
-            ok, _ = swan_runner.correr_swan(str(destino), log=log,
-                                            progreso=progreso)
+            ok, _ = swan_runner.correr_swan(str(destino), log=log, progreso=progreso)
             return ok
 
         def al_terminar(ok):
@@ -336,4 +526,4 @@ class PasoVer(asistente.Paso):
         return True, ""
 
 
-PASOS_MODELAR = [PasoMalla, PasoBatimetria, PasoBorde, PasoCorrer, PasoVer]
+PASOS_MODELAR = [PasoMalla, PasoBatimetria, PasoBorde, PasoNido, PasoCorrer, PasoVer]

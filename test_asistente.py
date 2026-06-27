@@ -97,11 +97,27 @@ def test_camino_analizar_tiene_tres_pasos():
     assert all(issubclass(c, asistente.Paso) for c in pasos_analizar.PASOS_ANALIZAR)
 
 
-def test_camino_modelar_tiene_cinco_pasos():
+def test_camino_modelar_tiene_seis_pasos_con_nido():
     import pasos_modelar
     import asistente
-    assert len(pasos_modelar.PASOS_MODELAR) == 5
+    assert len(pasos_modelar.PASOS_MODELAR) == 6
     assert all(issubclass(c, asistente.Paso) for c in pasos_modelar.PASOS_MODELAR)
+
+
+def test_paso_nido_solo_agrega_dominio_si_esta_activo():
+    import pasos_modelar
+    import tkinter as tk
+    root = tk.Tk(); root.withdraw()
+    try:
+        paso = pasos_modelar.PasoNido(root)
+        # grande ya presente en el contexto
+        ctx = {"dominios": [{"malla": {"xpc": 0}}]}
+        paso.entrar(ctx)
+        paso.activo.set(False)
+        paso.recoger(ctx)
+        assert len(ctx["dominios"]) == 1        # nido apagado: no agrega
+    finally:
+        root.destroy()
 
 
 def test_dominio_actual_crea_lista_para_el_nesting():
