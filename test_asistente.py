@@ -95,3 +95,19 @@ def test_camino_analizar_tiene_tres_pasos():
     import asistente
     assert len(pasos_analizar.PASOS_ANALIZAR) == 3
     assert all(issubclass(c, asistente.Paso) for c in pasos_analizar.PASOS_ANALIZAR)
+
+
+def test_camino_modelar_tiene_cinco_pasos():
+    import pasos_modelar
+    import asistente
+    assert len(pasos_modelar.PASOS_MODELAR) == 5
+    assert all(issubclass(c, asistente.Paso) for c in pasos_modelar.PASOS_MODELAR)
+
+
+def test_dominio_actual_crea_lista_para_el_nesting():
+    import pasos_modelar
+    ctx = {}
+    dom = pasos_modelar._dominio_actual(ctx)
+    assert ctx["dominios"] == [dom]      # estructura de lista lista para el nido
+    dom["malla"] = {"x": 1}
+    assert pasos_modelar._dominio_actual(ctx) is dom   # no duplica
