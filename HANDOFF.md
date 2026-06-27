@@ -85,11 +85,15 @@ Patrón común de todo el código: **registro adaptativo** — cada producto dec
   subclases de `Paso`, que **reutilizan el motor** (geo_malla, io_batimetria,
   borde_oleaje, io_era5, io_oleaje, validacion, productos, swan_builder/runner,
   tablero_*, video_swan). Mensajes de UI en español neutro (sin voseo).
-- **Hueco del nesting (continuidad del 2.º proyecto)**: en el camino Modelar el
-  contexto guarda los dominios como **lista** (`contexto["dominios"]`, helper
-  `pasos_modelar._dominio_actual`); en v1 hay un solo dominio. El nido se agregará
-  como un paso opcional entre Borde y Correr que reutilice malla/batimetría y haga
-  `append`; `PasoCorrer`/`PasoVer` ya leen del dominio para no cambiar de firma.
+- **Nesting (anidado) implementado**: el camino Modelar arma un par grande+nido
+  desde cero. `swan_builder.escribir_par_anidado` escribe los dos `.swn` enlazados
+  (NGRID/NESTOUT en el grande ↔ BOU NEST en el nido) y `validar_caso_anidado`
+  comprueba contención, misma zona UTM y celda más fina; `swan_runner.casos_ordenados`
+  ordena por `BOU NEST` (el nido corre al final). El camino tiene 6 pasos: `PasoNido`
+  (opcional, entre Borde y Correr) define la malla/batimetría fina y un punto de
+  salida espectral opcional, y hace `append` a la lista `contexto["dominios"]` (helper
+  `pasos_modelar._dominio_actual`); `PasoCorrer` arma 1 o 2 dominios según la lista.
+  `PasoVer` no cambió (el tablero autodetecta los dominios).
 
 ### Salidas
 - `rutas.py`: helper común. Todos los productos (tableros PNG, NetCDF, videos) se
@@ -99,8 +103,7 @@ Patrón común de todo el código: **registro adaptativo** — cada producto dec
 
 ### D) Procesar SWAN (el paso previo: correr el modelo)
 - `swan_runner.py`: corre `swanrun` (instalación SWAN en `%LOCALAPPDATA%\Programs\
-  swan`, ver [[swan-instalacion]]) sobre una carpeta con caso(s) `.swn`. Orden
-  grande→nido (padre = CGRID origen 0,0); verifica inputs externos (READINP) justo
+  swan`, ver [[swan-instalacion]]) sobre una carpeta con caso(s) `.swn`. Orden grande→nido (el nido se detecta por `BOU NEST`/`BOUN NEST` y corre al final; el resto, antes); verifica inputs externos (READINP) justo
   antes de cada caso (no el nesting, que lo genera el grande); detecta `norm_end`;
   `log`/`progreso` callbacks. Verificado con SWAN real (50 iter, genera Hs/Tp/Dir).
 - `swan_builder.py`: genera un `.swn` desde parámetros (malla CGRID, batimetría

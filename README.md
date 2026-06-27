@@ -24,8 +24,10 @@ camino es un asistente con barra de pasos y botones *Atrás / Siguiente*:
   podrán generar) → **tablero de curvas**.
 - **Modelar propagación con SWAN** — malla por lat/lon → batimetría (descarga
   automática o `.bot` propio) → borde (manual o derivado de ERA5/serie) → correr
-  SWAN → **tablero de mapas**. Un dominio por ahora; el modelo anidado (nido)
-  llegará como ampliación de este camino.
+  SWAN → **tablero de mapas**. Incluye un paso opcional para agregar un **dominio anidado (nido)** más fino:
+  define su malla por lat/lon y su propia batimetría, y la app arma el par
+  grande+nido (NGRID/NESTOUT ↔ BOU NEST) y lo corre en orden. Opcionalmente, un
+  punto de salida espectral en el nido.
 - **Ver una corrida SWAN ya hecha** — eliges la carpeta corrida y autodetecta si
   generar **mapas** (estacionaria) o **video** (no estacionaria).
 
@@ -95,7 +97,7 @@ Todas las salidas van a `salidas\<fuente>\`, una subcarpeta por archivo o corrid
 | `geo_malla.py` | Define la malla por lat/lon (centro + tamaño + celda) y calcula sola la zona UTM y los campos UTM. |
 | `swan_runner.py` · `swan_builder.py` · `gui_swan.py` | Correr SWAN y armar el `.swn`. |
 | `rutas.py` · `config.py` | Carpeta de salidas · preferencias entre sesiones. |
-| `test_regresion.py` · `test_asistente.py` | Red de seguridad: valores conocidos del motor · navegación del wizard y composición de los caminos. |
+| `test_regresion.py` · `test_asistente.py` · `test_nesting.py` | Red de seguridad: valores conocidos del motor · navegación del wizard y composición de los caminos · motor de nesting (builder, validación y orden de corrida). |
 
 ## Decisiones de diseño
 
