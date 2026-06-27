@@ -53,7 +53,7 @@ class PasoCarpeta(asistente.Paso):
     def validar(self):
         d = self.carpeta.get().strip()
         if not d or not Path(d).is_dir():
-            return False, "Elegí una carpeta válida con la corrida SWAN."
+            return False, "Elige una carpeta válida con la corrida SWAN."
         return True, ""
 
     def recoger(self, contexto):
@@ -96,7 +96,7 @@ class PasoGenerar(asistente.Paso):
 
     def __init__(self, master):
         super().__init__(master)
-        ttk.Label(self, text="Generá el producto y se abrirá al terminar.").pack(
+        ttk.Label(self, text="Genera el producto y se abrirá al terminar.").pack(
             anchor="w")
         self.boton = ttk.Button(self, text="Generar", command=self._generar)
         self.boton.pack(anchor="w", pady=(8, 0))
@@ -134,7 +134,7 @@ class PasoGenerar(asistente.Paso):
 
     def validar(self):
         if self.resultado is None:
-            return False, "Pulsá «Generar» y esperá a que termine antes de finalizar."
+            return False, "Pulsa «Generar» y espera a que termine antes de finalizar."
         return True, ""
 
 

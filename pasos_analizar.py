@@ -43,6 +43,7 @@ class PasoOrigen(asistente.Paso):
         self.marco_era5 = ttk.Frame(self)
         self.marco_era5.pack(fill="x", padx=(20, 0))
         self.campos = {}
+        self.entradas_era5 = []            # Entry anidados, para habilitar/deshabilitar
         for etiqueta, clave, valor in [
                 ("Latitud", "lat", "-37.0"), ("Longitud", "lon", "-73.5"),
                 ("Inicio (YYYY-MM-DD)", "inicio", "2024-07-28"),
@@ -50,8 +51,10 @@ class PasoOrigen(asistente.Paso):
             f = ttk.Frame(self.marco_era5); f.pack(fill="x", pady=2)
             ttk.Label(f, text=etiqueta, width=20).pack(side="left")
             var = tk.StringVar(value=valor)
-            ttk.Entry(f, textvariable=var).pack(side="left", fill="x", expand=True)
+            ent = ttk.Entry(f, textvariable=var)
+            ent.pack(side="left", fill="x", expand=True)
             self.campos[clave] = var
+            self.entradas_era5.append(ent)
         self.viento = tk.BooleanVar(value=True)
         ttk.Checkbutton(self.marco_era5, text="Incluir viento (sea/swell)",
                         variable=self.viento).pack(anchor="w")
@@ -70,6 +73,9 @@ class PasoOrigen(asistente.Paso):
                 hijo.config(state=estado_era5)
             except tk.TclError:
                 pass
+        # Los Entry van dentro de sub-frames, así que winfo_children no los alcanza.
+        for ent in self.entradas_era5:
+            ent.config(state=estado_era5)
 
     def _elegir(self):
         r = filedialog.askopenfilename(
@@ -109,10 +115,10 @@ class PasoOrigen(asistente.Paso):
         if self.modo.get() == "archivo":
             r = self.ruta.get().strip()
             if not r or not Path(r).exists():
-                return False, "Seleccioná un archivo de oleaje existente."
+                return False, "Selecciona un archivo de oleaje existente."
             return True, ""
         if not self.nc_descargado or not Path(self.nc_descargado).exists():
-            return False, "Descargá la serie ERA5 antes de continuar."
+            return False, "Descarga la serie ERA5 antes de continuar."
         return True, ""
 
     def recoger(self, contexto):
@@ -132,31 +138,30 @@ class PasoRevision(asistente.Paso):
         self.texto.delete("1.0", "end")
         try:
             ds = io_oleaje.cargar(contexto["ruta_datos"])
+            variables = ", ".join(ds.data_vars) or "(ninguna)"
+            n = int(ds.sizes.get("time", 0))
+            self.texto.insert("end", f"Variables presentes: {variables}\n")
+            self.texto.insert("end", f"Pasos de tiempo: {n}\n\n")
+            self.texto.insert("end", "Validación física:\n")
+            for r in validacion.validar(ds):
+                if not r["aplicable"]:
+                    self.texto.insert("end", f"  [n/a] {r['nombre']}: {r['detalle']}\n")
+                elif r["n_falla"] == 0:
+                    self.texto.insert("end", f"  [ok ] {r['nombre']}\n")
+                else:
+                    self.texto.insert("end",
+                                      f"  [!! ] {r['nombre']}: {r['n_falla']}/{r['n_total']}\n")
+            self.texto.insert("end", "\nProductos que se podrán generar:\n")
+            for it in productos.evaluar(ds):
+                if it["disponible"]:
+                    self.texto.insert("end", f"  ✓ {it['nombre']}\n")
+                else:
+                    self.texto.insert("end",
+                                      f"  ✗ {it['nombre']} (faltan: {', '.join(it['faltan'])})\n")
         except Exception as e:
-            self.texto.insert("end", f"No se pudo leer el archivo:\n{e}\n")
+            self.texto.insert("end", f"Error al analizar el archivo:\n{e}\n")
+        finally:
             self.texto.config(state="disabled")
-            return
-        variables = ", ".join(ds.data_vars) or "(ninguna)"
-        n = int(ds.sizes.get("time", 0))
-        self.texto.insert("end", f"Variables presentes: {variables}\n")
-        self.texto.insert("end", f"Pasos de tiempo: {n}\n\n")
-        self.texto.insert("end", "Validación física:\n")
-        for r in validacion.validar(ds):
-            if not r["aplicable"]:
-                self.texto.insert("end", f"  [n/a] {r['nombre']}: {r['detalle']}\n")
-            elif r["n_falla"] == 0:
-                self.texto.insert("end", f"  [ok ] {r['nombre']}\n")
-            else:
-                self.texto.insert("end",
-                                  f"  [!! ] {r['nombre']}: {r['n_falla']}/{r['n_total']}\n")
-        self.texto.insert("end", "\nProductos que se podrán generar:\n")
-        for it in productos.evaluar(ds):
-            if it["disponible"]:
-                self.texto.insert("end", f"  ✓ {it['nombre']}\n")
-            else:
-                self.texto.insert("end",
-                                  f"  ✗ {it['nombre']} (faltan: {', '.join(it['faltan'])})\n")
-        self.texto.config(state="disabled")
 
 
 class PasoTablero(asistente.Paso):
@@ -194,7 +199,7 @@ class PasoTablero(asistente.Paso):
 
     def validar(self):
         if self.resultado is None:
-            return False, "Pulsá «Generar tablero» y esperá a que termine."
+            return False, "Pulsa «Generar tablero» y espera a que termine."
         return True, ""
 
 

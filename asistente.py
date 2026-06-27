@@ -226,13 +226,16 @@ class Wizard(ttk.Frame):
     def _bloquear(self, activo):
         estado = "disabled" if activo else "normal"
         self.boton_sig.config(state=estado)
-        self.boton_atras.config(state=estado)
         self.boton_inicio.config(state=estado)
         if activo:
+            self.boton_atras.config(state="disabled")
             self.progreso.config(mode="indeterminate")
             self.progreso.start(12)
             self.estado.config(text="Procesando…", foreground="#d18616")
         else:
+            # Al desbloquear, «Atrás» respeta la posición real (off en el primer paso).
+            self.boton_atras.config(
+                state="disabled" if self.maquina.es_primero() else "normal")
             self.progreso.stop()
             self.progreso.config(mode="determinate", value=0)
 
