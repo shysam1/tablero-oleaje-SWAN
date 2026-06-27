@@ -81,3 +81,10 @@ def test_lista_vacia_es_error():
     import pytest
     with pytest.raises(ValueError):
         asistente.MaquinaWizard([])
+
+
+def test_camino_ver_tiene_tres_pasos():
+    import pasos_ver
+    import asistente
+    assert len(pasos_ver.PASOS_VER) == 3
+    assert all(issubclass(c, asistente.Paso) for c in pasos_ver.PASOS_VER)
