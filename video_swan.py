@@ -257,8 +257,12 @@ def animar_multipanel(corrida, salida=None, fps=12, formato="auto", paso=1,
 
     def actualizar(i):
         qm_g.set_array(large["Hs"].isel(time=i).values.ravel())
-        u, v = _componentes_dir(large["Dir"].isel(time=i).values)
-        qv_g.set_UVC(u[::3, ::3], v[::3, ::3])
+        # La flecha de dirección sólo existe si el dominio grande trae Dir con
+        # datos válidos (_dibujar_mapa devuelve qv_g=None si no). Sin esta guarda,
+        # actualizar el quiver inexistente reventaba la animación.
+        if qv_g is not None:
+            u, v = _componentes_dir(large["Dir"].isel(time=i).values)
+            qv_g.set_UVC(u[::3, ::3], v[::3, ::3])
         if qm_n is not None:
             qm_n.set_array(n1["Hs"].isel(time=i).values.ravel())
         cursor.set_xdata([tiempos[i], tiempos[i]])

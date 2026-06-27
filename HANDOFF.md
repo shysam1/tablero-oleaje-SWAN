@@ -1,5 +1,55 @@
 # Handoff — Herramienta "Tablero Oleaje" (contexto para nueva conversación)
 
+> **Bitácora compartida entre agentes.** Esta app se desarrolla con dos asistentes
+> en paralelo (Cursor y Claude Code). Para que se entiendan, **todo cambio se
+> registra abajo con su PORQUÉ**, lo más reciente primero. Antes de tocar código,
+> lee esta sección; después de cambiar algo, añade una entrada.
+
+## Registro de cambios (más reciente primero)
+
+### 2026-06-27 · Revisión QA — corrección de los 4 bugs CRÍTICOS (Cursor)
+Tras una auditoría QA de todos los `.py`, se corrigieron los 4 fallos que podían
+tumbar la app o eran riesgo de seguridad. **Los 72 tests pasan** tras los cambios.
+Nota de entorno: en este equipo el shell debe correr **sin sandbox** (la política
+`workspace_readwrite` de Windows no está soportada), o `pytest` falla por entorno,
+no por código.
+
+1. **Inyección de comandos en `swan_runner.py`** — *por qué:* el nombre del caso
+   (stem del `.swn`, influido por el usuario) se interpolaba en `subprocess` con
+   `shell=True` (`f'swanrun "{caso}"'`), permitiendo ejecutar comandos arbitrarios.
+   *Arreglo:* lista blanca `_NOMBRE_CASO_OK` + `_validar_nombre_caso()`, y
+   `shell=False` resolviendo `swanrun` con `shutil.which` y pasando el caso como
+   argumento aparte (con `cmd /c` solo si es `.bat/.cmd`).
+2. **`ZeroDivisionError` con 0 productos en `tablero_oleaje.py` / `tablero_swan.py`**
+   — *por qué:* si el dataset no tenía variables ploteables, `cols = 0` reventaba al
+   armar la figura. *Arreglo:* si `disponibles` está vacío, se lanza `ValueError`
+   con mensaje claro (oleaje además cierra el `ds`) antes de construir la figura.
+3. **`video_swan.animar_multipanel` sin campo `Dir`** — *por qué:* `actualizar()`
+   llamaba `qv_g.set_UVC(...)` aunque `_dibujar_mapa` devuelve `qv_g=None` cuando no
+   hay dirección (o es todo NaN). *Arreglo:* guarda `if qv_g is not None:` antes de
+   tocar la flecha y `large["Dir"]`. (`animar_campo` ya estaba protegido.)
+4. **Duplicados SWAN silenciosos en `io_swan.py` / `io_swan_nonst.py`** — *por qué:*
+   varias salidas para la misma variable+malla se resolvían con un dict donde
+   "ganaba el último" sin avisar (riesgo de usar un resultado viejo). *Arreglo:*
+   helper `_asignar_campos()` que detecta la colisión, **avisa** y conserva el
+   archivo **más reciente** (`mtime`).
+
+**Pendiente: bugs de ALTA prioridad (siguiente tanda, aún sin tocar):**
+1. `pasos_analizar.PasoRevision` deja avanzar con datos rotos (hereda `validar()→True`).
+2. `validacion._chequeo_tiempo` revienta con serie de 1 timestamp (`mode()[0]` IndexError).
+3. `swan_runner`: `norm_end` es global por carpeta, no por caso → falso éxito si falla el 2º caso.
+4. `pasos_modelar.PasoCorrer` trata SWAN con errores como OK (`bool(ok)` solo por `norm_end`).
+5. I/O frágil: `.mat` sin variable esperada (`io_oleaje`), CGRID `mxc=0` (división por cero),
+   BLOCK/SPEC2D truncado (`io_swan`/`io_swan_nonst`).
+6. ERA5 cacheada sin validar (`io_era5`); HTTP sin chequeo de status (`io_batimetria`).
+7. Gumbel sin protección con series cortas (`borde_oleaje`, `productos`).
+8. Carreras GUI/hilos: callbacks sin `winfo_exists()` y vistas que no cancelan tareas
+   (`app_tablero`, `gui_swan`).
+
+**Regla de trabajo:** correr `python -m pytest test_regresion.py test_asistente.py
+test_nesting.py -q` tras cada cambio (sin sandbox en este equipo) y mantener la
+coherencia entre módulos.
+
 ## Qué es
 Herramienta personal reutilizable de análisis de oleaje, construida iterativamente
 para que el usuario (estudiante ing. civil hidráulica, UdeC) aprenda `xarray`

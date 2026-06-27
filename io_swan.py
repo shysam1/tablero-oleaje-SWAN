@@ -189,6 +189,32 @@ def leer_espectro_swan(carpeta, archivo=None):
     return ds
 
 
+def _asignar_campos(candidatos):
+    """
+    De una lista de (variable, ruta) ya filtrada por tamaño de malla, asigna una
+    sola ruta por variable. Si hay varias salidas para la misma variable (p. ej.
+    una corrida repetida con archivos viejos sin borrar), antes ganaba la última
+    en silencio; ahora se avisa y se conserva la MÁS RECIENTE, para no usar un
+    resultado obsoleto sin que el usuario lo sepa.
+    """
+    por_var = {}
+    for var, ruta in candidatos:
+        por_var.setdefault(var, []).append(ruta)
+    campos = {}
+    for var, rutas_var in por_var.items():
+        if len(rutas_var) > 1:
+            elegido = max(rutas_var, key=lambda r: Path(r).stat().st_mtime)
+            otros = ", ".join(sorted(Path(r).name for r in rutas_var
+                                     if r != elegido))
+            print(f"  [aviso] {len(rutas_var)} archivos para '{var}' con el mismo "
+                  f"tamaño de malla; se usa el más reciente ({Path(elegido).name}) "
+                  f"y se ignoran: {otros}")
+            campos[var] = elegido
+        else:
+            campos[var] = rutas_var[0]
+    return campos
+
+
 def _detectar_dominios(carpeta, utm_large, titulos):
     """
     Autodetecta los dominios desde los .swn y reparte las salidas .txt por
@@ -221,7 +247,8 @@ def _detectar_dominios(carpeta, utm_large, titulos):
 
     def cfg_de(geo, utm, swn, nombre, titulo):
         ny, nx = geo["ny"], geo["nx"]
-        campos = {var: ruta for ruta, var, n in inv if n == nx * ny}
+        campos = _asignar_campos([(var, ruta) for ruta, var, n in inv
+                                  if n == nx * ny])
         bot = next((b for b in bots
                     if len(Path(b).read_text().split()) == nx * ny), None)
         return {"geo": geo, "utm": utm, "campos": campos, "bot": bot,

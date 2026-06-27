@@ -13,6 +13,7 @@ línea a línea para mostrarlo en la GUI.
 """
 
 from pathlib import Path
+import re
 import shutil
 import subprocess
 import sys
@@ -20,10 +21,28 @@ import threading
 
 import prioridad
 
+# Caracteres permitidos en el nombre de un caso SWAN (stem del .swn). Es una
+# lista blanca deliberadamente estrecha: letras, números, espacio y unos pocos
+# separadores. Cualquier otro carácter (comillas, &, |, >, etc.) se rechaza para
+# que el nombre no pueda inyectar comandos al lanzar el proceso.
+_NOMBRE_CASO_OK = re.compile(r"^[A-Za-z0-9 ._-]+$")
+
 
 def swan_disponible():
     """True si `swanrun`/`swan.exe` está accesible en el PATH."""
     return shutil.which("swanrun") is not None or shutil.which("swan") is not None
+
+
+def _validar_nombre_caso(caso):
+    """
+    Comprueba que el nombre del caso sea seguro para pasarlo al proceso de SWAN.
+    Lanza ValueError si contiene caracteres fuera de la lista blanca (defensa
+    contra inyección de comandos a través del nombre del .swn).
+    """
+    if not caso or not _NOMBRE_CASO_OK.match(caso):
+        raise ValueError(
+            f"Nombre de caso SWAN no válido: {caso!r}. Usa solo letras, números, "
+            "espacios, guiones, guiones bajos y puntos.")
 
 
 def _es_nido(ruta_swn):
@@ -93,12 +112,21 @@ def correr_caso(carpeta, caso, log=None, on_proc=None):
     Devuelve True si SWAN terminó normalmente (genera el archivo `norm_end`).
     """
     carpeta = Path(carpeta)
+    _validar_nombre_caso(caso)
     if log:
         log(f"=== Corriendo SWAN: {caso} ===")
     # ABOVE_NORMAL se hereda a swan.exe; evita que Windows lo postergue.
     flags = getattr(subprocess, "ABOVE_NORMAL_PRIORITY_CLASS", 0)
-    # shell=True para que cmd.exe resuelva swanrun.bat desde el PATH.
-    proc = subprocess.Popen(f'swanrun "{caso}"', cwd=str(carpeta), shell=True,
+    # Sin shell=True: se resuelve el ejecutable de swanrun en el PATH y se pasa el
+    # caso como argumento aparte (lista), de modo que no se interpola en una línea
+    # de comandos. swanrun suele ser un .bat, que necesita cmd.exe para ejecutarse;
+    # como el nombre del caso ya está saneado, no puede inyectar metacaracteres.
+    ejecutable = shutil.which("swanrun") or "swanrun"
+    if ejecutable.lower().endswith((".bat", ".cmd")):
+        comando = ["cmd", "/c", ejecutable, caso]
+    else:
+        comando = [ejecutable, caso]
+    proc = subprocess.Popen(comando, cwd=str(carpeta), shell=False,
                             stdout=subprocess.PIPE, stderr=subprocess.STDOUT,
                             text=True, bufsize=1, creationflags=flags)
     if on_proc:

@@ -57,6 +57,12 @@ def generar_tablero_swan(carpeta, ruta_png=None, utm_large=None, titulos=None):
     productos_swan.imprimir_capacidades(informe)
     disponibles = [it for it in informe if it["disponible"]]
 
+    if not disponibles:
+        raise ValueError(
+            "No se pudo generar ningún mapa del tablero SWAN: la carpeta no tiene "
+            "salidas de campo válidas (revisa que la corrida haya terminado y "
+            "generado los .txt/.mat de Hs/Tp/Dir).")
+
     fig = _construir_figura(corrida, disponibles)
     ruta_png = Path(ruta_png) if ruta_png else \
         rutas.carpeta_salida(carpeta.name) / f"tablero_swan_{carpeta.name}.png"

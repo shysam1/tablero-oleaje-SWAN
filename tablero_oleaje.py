@@ -72,6 +72,13 @@ def generar_tablero(ruta_entrada, ruta_nc=None, ruta_png=None):
     productos.imprimir_capacidades(informe)
     disponibles = [it for it in informe if it["disponible"]]
 
+    if not disponibles:
+        ds.close()
+        raise ValueError(
+            "No se pudo generar ningún panel del tablero: el archivo no tiene "
+            "variables de oleaje suficientes (revisa el reporte de validación "
+            "de arriba). Verifica que la fuente incluya Hs/Tp/Dir.")
+
     fig = _construir_figura(ds, disponibles)
     ruta_png = Path(ruta_png) if ruta_png else destino / f"tablero_{ruta_entrada.stem}.png"
     fig.savefig(ruta_png, dpi=200, bbox_inches="tight")
