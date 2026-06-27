@@ -378,6 +378,10 @@ class PasoNido(asistente.Paso):
                 dom["punto_espectral"] = {"x": round(este), "y": round(norte),
                                           "archivo": "Espectro_Punto.txt"}
             except Exception:
+                messagebox.showwarning(
+                    "Punto espectral no agregado",
+                    "No se pudo convertir el punto espectral a UTM; "
+                    "se omitirá la salida espectral del nido.")
                 dom["punto_espectral"] = None
         contexto["dominios"].append(dom)
 
@@ -450,8 +454,6 @@ class PasoCorrer(asistente.Paso):
             return
 
         if anidado:
-            n = dominios[1]
-            malla_n = {k: v for k, v in n["malla"].items() if k != "zona_utm"}
             ruta_g, ruta_n = swan_builder.escribir_par_anidado(
                 destino, nombre, nombre + "_nido",
                 malla_g, {"archivo": bot_g.name}, bordes,

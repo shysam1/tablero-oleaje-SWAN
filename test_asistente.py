@@ -120,6 +120,28 @@ def test_paso_nido_solo_agrega_dominio_si_esta_activo():
         root.destroy()
 
 
+def test_paso_nido_activo_agrega_dominio_sin_espectro():
+    import pasos_modelar
+    import tkinter as tk
+    root = tk.Tk(); root.withdraw()
+    try:
+        paso = pasos_modelar.PasoNido(root)
+        ctx = {"dominios": [{"malla": {"xpc": 0}}]}
+        paso.entrar(ctx)
+        paso.activo.set(True)
+        paso.malla = {"xpc": 1, "ypc": 2, "xlenc": 9000, "ylenc": 10000,
+                      "mxc": 45, "myc": 50, "zona_utm": "19S"}
+        paso.bot.set("/ruta/ficticia/bati_nido.bot")
+        paso.con_espectro.set(False)
+        paso.recoger(ctx)
+        assert len(ctx["dominios"]) == 2
+        assert ctx["dominios"][1]["malla"] is paso.malla
+        assert ctx["dominios"][1]["bot"] == "/ruta/ficticia/bati_nido.bot"
+        assert "punto_espectral" not in ctx["dominios"][1]
+    finally:
+        root.destroy()
+
+
 def test_dominio_actual_crea_lista_para_el_nesting():
     import pasos_modelar
     ctx = {}
