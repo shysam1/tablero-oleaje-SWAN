@@ -132,8 +132,7 @@ def construir_swn(nombre, malla, batimetria, bordes, salidas=("Hs", "Tp", "Dir")
          f"{m['mxc']} {m['myc']} CIRCLE {m['mdc']} {m['flow']} {m['fhigh']} {m['msc']}",
          f"INPGRID BOTTOM {b['xpinp']} {b['ypinp']} {b['alpinp']} "
          f"{b['mxinp']} {b['myinp']} {b['dxinp']} {b['dyinp']}",
-         f"READINP BOTTOM {b['fac']} '{b['archivo']}' {b['idla']} 0 FREE",
-         "$"]
+         f"READINP BOTTOM {b['fac']} '{b['archivo']}' {b['idla']} 0 FREE"]
 
     L += ["$", "$*********** Condiciones de borde ***********"]
     if bou_nest:

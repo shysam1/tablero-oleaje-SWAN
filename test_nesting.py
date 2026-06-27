@@ -27,6 +27,13 @@ def test_construir_swn_bou_nest_reemplaza_boun_side():
     assert "BOU SHAPE" not in txt
 
 
+def test_construir_swn_bou_nest_descarta_bordes_si_los_hay():
+    txt = swan_builder.construir_swn("N", MALLA_N, {"archivo": "bn.bot"},
+                                     BORDES, bou_nest="nest1")  # bordes no vacíos
+    assert "BOU NEST 'nest1' CLOSED" in txt
+    assert "BOUN SIDE" not in txt
+
+
 def test_construir_swn_punto_espectral():
     txt = swan_builder.construir_swn(
         "N", MALLA_N, {"archivo": "bn.bot"}, [], bou_nest="nest1",
