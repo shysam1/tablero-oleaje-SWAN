@@ -116,3 +116,9 @@ def test_es_nido_detecta_bou_nest(tmp_path):
     p2 = tmp_path / "g.swn"
     p2.write_text("CGRID 0 0 0 100 100 10 10\nBOUN SIDE W CCW CON PAR 3 12 290 20\n")
     assert swan_runner._es_nido(p2) is False
+    p3 = tmp_path / "n2.swn"
+    p3.write_text("CGRID 5 5 0 50 50 10 10\nBOUN NEST 'y' CLOSED\nCOMPUTE\n")
+    assert swan_runner._es_nido(p3) is True
+    p4 = tmp_path / "g2.swn"
+    p4.write_text("CGRID 0 0 0 100 100 10 10\n$BOU NEST 'z' CLOSED\nCOMPUTE\n")
+    assert swan_runner._es_nido(p4) is False

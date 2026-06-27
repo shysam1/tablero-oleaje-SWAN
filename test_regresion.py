@@ -148,9 +148,11 @@ def test_builder_genera_bloques_clave():
 
 
 def test_casos_ordenados_padre_primero(tmp_path):
-    """El dominio grande (origen 0,0) va antes que el anidado."""
+    """El dominio grande (sin BOU NEST) va antes que el anidado (con BOU NEST)."""
     (tmp_path / "grande.swn").write_text("CGRID 0. 0. 0. 1000 1000 10 10 CIRCLE 36 .04 1\n")
-    (tmp_path / "nido.swn").write_text("CGRID 300 300 0. 200 200 20 20 CIRCLE 36 .04 1\n")
+    (tmp_path / "nido.swn").write_text(
+        "CGRID 300 300 0. 200 200 20 20 CIRCLE 36 .04 1\n"
+        "BOU NEST 'nest1' CLOSED\n")
     assert swan_runner.casos_ordenados(tmp_path) == ["grande", "nido"]
 
 
