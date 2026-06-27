@@ -99,7 +99,8 @@ def validar_caso(malla, batimetria, bordes, carpeta=None):
 
 def construir_swn(nombre, malla, batimetria, bordes, salidas=("Hs", "Tp", "Dir"),
                   estacionario=True, tiempo=None, friccion=True, setup=True,
-                  viento=False, cuadruples=False):
+                  viento=False, cuadruples=False,
+                  nido=None, bou_nest=None, punto_espectral=None):
     """
     Devuelve el texto de un .swn.
 
@@ -112,6 +113,11 @@ def construir_swn(nombre, malla, batimetria, bordes, salidas=("Hs", "Tp", "Dir")
     salidas:   variables a escribir como BLOCK (Hs/Tp/Dir/Setup).
     estacionario: True → COMPUTE STAT; False → COMPUTE NONSTAT con `tiempo`.
     tiempo:    dict {inicio, paso, fin} en formato 'YYYYMMDD.HHMMSS' (no estac.).
+    nido:      dict {sname, nestfile, xpn, ypn, xlenn, ylenn, mxn, myn}. Si se da,
+               el dominio emite NGRID + NESTOUT (es el grande de un anidado).
+    bou_nest:  nombre del archivo de contorno. Si se da, el dominio usa
+               BOU NEST en vez de BOUN SIDE (es el nido de un anidado).
+    punto_espectral: dict {x, y, archivo}. Si se da, emite POINTS + SPEC 2D.
     """
     m, b = _completar(malla, batimetria)
 
@@ -127,14 +133,17 @@ def construir_swn(nombre, malla, batimetria, bordes, salidas=("Hs", "Tp", "Dir")
          f"INPGRID BOTTOM {b['xpinp']} {b['ypinp']} {b['alpinp']} "
          f"{b['mxinp']} {b['myinp']} {b['dxinp']} {b['dyinp']}",
          f"READINP BOTTOM {b['fac']} '{b['archivo']}' {b['idla']} 0 FREE",
-         "$",
-         "$*********** Condiciones de borde ***********",
-         "BOU SHAPE JONSWAP 3.3 PEAK DSPR DEGREES"]
+         "$"]
 
-    for bd in bordes:
-        dd = bd.get("dd", 0.0)
-        L.append(f"BOUN SIDE {bd['lado']} CCW CON PAR "
-                 f"{bd['hs']} {bd['per']} {bd['dir']} {dd}")
+    L += ["$", "$*********** Condiciones de borde ***********"]
+    if bou_nest:
+        L.append(f"BOU NEST '{bou_nest}' CLOSED")
+    else:
+        L.append("BOU SHAPE JONSWAP 3.3 PEAK DSPR DEGREES")
+        for bd in bordes:
+            dd = bd.get("dd", 0.0)
+            L.append(f"BOUN SIDE {bd['lado']} CCW CON PAR "
+                     f"{bd['hs']} {bd['per']} {bd['dir']} {dd}")
 
     L += ["$", "$*********** Procesos físicos ***********"]
     if not viento:
@@ -148,9 +157,18 @@ def construir_swn(nombre, malla, batimetria, bordes, salidas=("Hs", "Tp", "Dir")
         L.append("SETUP")
 
     L += ["$", "$*********** Salidas ***********"]
+    if nido:
+        L.append(f"NGRID '{nido['sname']}' {nido['xpn']} {nido['ypn']} 0. "
+                 f"{nido['xlenn']} {nido['ylenn']} {nido['mxn']} {nido['myn']}")
     for var in salidas:
         if var in _QUANT:
             L.append(f"BLOCK 'COMPGRID' NOHEADER '{_ARCHIVO[var]}' {_QUANT[var]}")
+    if nido:
+        L.append(f"NESTOUT '{nido['sname']}' '{nido['nestfile']}'")
+    if punto_espectral:
+        pe = punto_espectral
+        L.append(f"POINTS 'SpecOut' {pe['x']} {pe['y']}")
+        L.append(f"SPEC 'SpecOut' SPEC2D ABS '{pe['archivo']}'")
 
     L.append("$")
     if estacionario:
