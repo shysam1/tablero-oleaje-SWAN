@@ -1,16 +1,11 @@
 """
-Interfaz gráfica para generar el tablero de oleaje.
+Interfaz gráfica del Tablero de Oleaje.
 
-Permite elegir un archivo de oleaje (.mat/.csv/.nc) o una carpeta de corrida
-SWAN, pulsar "Crear" y genera el producto que corresponda reutilizando los
-pipelines. Autodetecta tres modos:
-  - serie temporal (.mat/.csv/.nc)        → tablero de curvas (PNG),
-  - carpeta SWAN estacionaria             → tablero de mapas (PNG),
-  - carpeta SWAN no estacionaria (NonSt)  → video del evento (MP4/GIF).
-Muestra el reporte del pipeline y abre el resultado al terminar.
-
-El cálculo corre en un hilo aparte para que la ventana no se congele; en el
-modo video, una barra reporta el avance frame a frame.
+Arranca en una pantalla de inicio ("¿Qué querés hacer?") con tres caminos
+guiados (analizar una serie, modelar con SWAN, ver una corrida existente) y un
+acceso al modo avanzado, que es la caja de herramientas de siempre (selector +
+Crear + Procesar SWAN + Descargar ERA5). Todo vive en la misma ventana, que
+intercambia "vistas".
 """
 
 import io
@@ -32,6 +27,10 @@ import io_era5
 import rutas
 import io_oleaje
 import borde_oleaje
+import asistente
+import pasos_analizar
+import pasos_modelar
+import pasos_ver
 
 
 def validar_inputs_era5(lat_txt, lon_txt, inicio, fin):
@@ -45,34 +44,71 @@ def validar_inputs_era5(lat_txt, lon_txt, inicio, fin):
     return lat, lon
 
 
-class AppTablero(tk.Tk):
-    """Ventana principal de la aplicación."""
+class VistaInicio(ttk.Frame):
+    """Pantalla de inicio con las tres tarjetas de camino + acceso avanzado."""
 
-    def __init__(self):
-        super().__init__()
-        self.title("Tablero de Oleaje")
-        self.geometry("680x550")
-        self.minsize(600, 490)
+    def __init__(self, master, ir_a):
+        super().__init__(master, padding=16)
+        self.ir_a = ir_a              # callback: ir_a(nombre_vista)
+        ttk.Label(self, text="Tablero de Oleaje",
+                  font=("Segoe UI", 18, "bold")).pack(anchor="w")
+        ttk.Label(self, text="¿Qué querés hacer?",
+                  font=("Segoe UI", 12)).pack(anchor="w", pady=(2, 16))
+
+        tarjetas = ttk.Frame(self)
+        tarjetas.pack(fill="both", expand=True)
+        datos = [
+            ("📈  Analizar oleaje\nen un punto",
+             "Datos propios o descargados de ERA5 → curvas, régimen extremo, "
+             "espectro.", "analizar"),
+            ("🌊  Modelar propagación\ncon SWAN",
+             "Desde cero: malla → batimetría → borde → correr → mapas.", "modelar"),
+            ("🗺️  Ver una corrida\nSWAN ya hecha",
+             "Tenés la carpeta corrida y solo querés graficarla (mapas o video).",
+             "ver"),
+        ]
+        for i, (titulo, desc, destino) in enumerate(datos):
+            tarjetas.columnconfigure(i, weight=1)
+            tarj = ttk.Frame(tarjetas, relief="solid", borderwidth=1, padding=12)
+            tarj.grid(row=0, column=i, sticky="nsew", padx=6)
+            ttk.Label(tarj, text=titulo, font=("Segoe UI", 12, "bold"),
+                      justify="left").pack(anchor="w")
+            ttk.Label(tarj, text=desc, foreground="#555", wraplength=180,
+                      justify="left").pack(anchor="w", pady=(6, 10))
+            ttk.Button(tarj, text="Empezar →",
+                       command=lambda d=destino: self.ir_a(d)).pack(anchor="w")
+
+        ttk.Button(self, text="Herramientas sueltas (modo avanzado) →",
+                   command=lambda: self.ir_a("avanzado")).pack(anchor="e",
+                                                               pady=(16, 0))
+
+
+class VistaAvanzado(ttk.Frame):
+    """La caja de herramientas de siempre: selector + Crear + SWAN + ERA5."""
+
+    def __init__(self, master, al_inicio):
+        super().__init__(master, padding=12)
+        self.al_inicio = al_inicio
         self.ruta_datos = tk.StringVar(value="")
         # Offset UTM del nodo (0,0) del dominio grande SWAN (default: Golfo de
-        # Arauco). Sólo afecta las etiquetas UTM de los mapas/videos; cámbialo
-        # para una corrida de otro lugar.
+        # Arauco). Sólo afecta las etiquetas UTM de los mapas/videos.
         self.utm_x = tk.StringVar(value="620494")
         self.utm_y = tk.StringVar(value="5876451")
         self._construir_widgets()
 
     def _construir_widgets(self):
-        marco = ttk.Frame(self, padding=12)
-        marco.pack(fill="both", expand=True)
-
-        ttk.Label(marco, text="Tablero de Oleaje",
-                  font=("Segoe UI", 16, "bold")).pack(anchor="w")
-        ttk.Label(marco, text="Serie temporal (.mat/.csv/.nc) → curvas. "
+        fila_top = ttk.Frame(self)
+        fila_top.pack(fill="x")
+        ttk.Button(fila_top, text="← Inicio",
+                   command=self.al_inicio).pack(side="left")
+        ttk.Label(fila_top, text="Modo avanzado",
+                  font=("Segoe UI", 16, "bold")).pack(side="left", padx=(10, 0))
+        ttk.Label(self, text="Serie temporal (.mat/.csv/.nc) → curvas. "
                   "Carpeta SWAN → mapas. Carpeta SWAN no estacionaria → video.",
-                  foreground="#555").pack(anchor="w", pady=(0, 10))
+                  foreground="#555").pack(anchor="w", pady=(4, 10))
 
         # Selector: campo de texto + botones para archivo o carpeta SWAN.
-        fila = ttk.Frame(marco)
+        fila = ttk.Frame(self)
         fila.pack(fill="x", pady=4)
         ttk.Entry(fila, textvariable=self.ruta_datos).pack(
             side="left", fill="x", expand=True)
@@ -81,7 +117,7 @@ class AppTablero(tk.Tk):
         ttk.Button(fila, text="Carpeta SWAN…", command=self._elegir_carpeta).pack(
             side="left", padx=(6, 0))
 
-        fila_b = ttk.Frame(marco)
+        fila_b = ttk.Frame(self)
         fila_b.pack(pady=10)
         self.boton_crear = ttk.Button(fila_b, text="Crear", command=self._crear)
         self.boton_crear.pack(side="left", ipadx=10, ipady=4)
@@ -91,7 +127,7 @@ class AppTablero(tk.Tk):
             side="left", padx=(8, 0), ipadx=6, ipady=4)
 
         # Campo avanzado: offset UTM del dominio grande SWAN (sólo mapas/videos).
-        fila_utm = ttk.Frame(marco)
+        fila_utm = ttk.Frame(self)
         fila_utm.pack(fill="x", pady=(0, 2))
         ttk.Label(fila_utm, text="Offset UTM grande (avanzado):",
                   foreground="#888").pack(side="left")
@@ -100,15 +136,16 @@ class AppTablero(tk.Tk):
         ttk.Entry(fila_utm, textvariable=self.utm_y, width=10).pack(
             side="left", padx=(2, 0))
 
-        self.estado = ttk.Label(marco, text="Listo.", foreground="#1f6feb")
+        self.estado = ttk.Label(self, text="Listo.", foreground="#1f6feb")
         self.estado.pack(anchor="w")
 
         # Barra de avance (sólo se llena en el modo video, frame a frame).
-        self.progreso = ttk.Progressbar(marco, mode="determinate", maximum=100)
+        self.progreso = ttk.Progressbar(self, mode="determinate", maximum=100)
         self.progreso.pack(fill="x", pady=(4, 0))
 
         # Consola embebida: muestra el reporte que el pipeline imprime.
-        self.salida = scrolledtext.ScrolledText(marco, height=14, font=("Consolas", 9))
+        self.salida = scrolledtext.ScrolledText(self, height=14,
+                                                font=("Consolas", 9))
         self.salida.pack(fill="both", expand=True, pady=(8, 0))
 
     def _abrir_swan(self):
@@ -197,7 +234,6 @@ class AppTablero(tk.Tk):
                     print(f"Espectro ERA5 descargado: {esp.sizes.get('time', 0)} pasos.")
             carpeta = rutas.carpeta_salida(io_era5._nombre_fuente(lat, lon, "serie"))
             nc_serie = carpeta / "era5_serie.nc"
-            # Dejar el .nc seleccionado para que el botón Crear genere el tablero.
             self.after(0, self.ruta_datos.set, str(nc_serie))
             self.after(0, self._exito, buffer.getvalue(), str(carpeta))
         except Exception:
@@ -230,8 +266,6 @@ class AppTablero(tk.Tk):
         if not Path(ruta).exists():
             messagebox.showerror("Archivo no encontrado", f"No existe:\n{ruta}")
             return
-
-        # Deshabilitar el botón y lanzar el cálculo en segundo plano.
         self.boton_crear.config(state="disabled")
         self.estado.config(text="Procesando…", foreground="#d18616")
         self.progreso["value"] = 0
@@ -242,7 +276,7 @@ class AppTablero(tk.Tk):
         """Corre el pipeline capturando lo que imprime, fuera del hilo de la GUI."""
         buffer = io.StringIO()
 
-        def progreso(i, n):               # callback del escritor de video
+        def progreso(i, n):
             self.after(0, self._set_progreso, i, n)
 
         try:
@@ -266,7 +300,6 @@ class AppTablero(tk.Tk):
           carpeta SWAN no estacionaria → video del evento (con avance),
           carpeta SWAN estacionaria    → tablero de mapas,
           serie temporal               → tablero de curvas.
-        Devuelve la ruta del archivo generado (PNG o video).
         """
         carpeta = ruta.parent if ruta.suffix.lower() == ".swn" else ruta
         utm = self._utm_large()
@@ -278,7 +311,6 @@ class AppTablero(tk.Tk):
         return tablero_oleaje.generar_tablero(str(ruta))
 
     def _set_progreso(self, i, n):
-        """Refleja el avance del video (frame i de n) en la barra y el estado."""
         self.progreso["maximum"] = n
         self.progreso["value"] = i + 1
         self.estado.config(text=f"Generando video… frame {i + 1}/{n}",
@@ -290,7 +322,7 @@ class AppTablero(tk.Tk):
         self.progreso["value"] = 0
         self.boton_crear.config(state="normal")
         try:
-            os.startfile(ruta_salida)     # abre PNG o video con el visor por defecto
+            os.startfile(ruta_salida)
         except Exception:
             pass
 
@@ -301,6 +333,47 @@ class AppTablero(tk.Tk):
         self.boton_crear.config(state="normal")
         messagebox.showerror("Error",
                              "Ocurrió un problema. Revisa el detalle en la ventana.")
+
+
+class AppTablero(tk.Tk):
+    """Ventana principal: contenedor que intercambia vistas (inicio/wizards/avanzado)."""
+
+    def __init__(self):
+        super().__init__()
+        self.title("Tablero de Oleaje")
+        self.geometry("760x620")
+        self.minsize(680, 560)
+        self.contenedor = ttk.Frame(self)
+        self.contenedor.pack(fill="both", expand=True)
+        self.contenedor.rowconfigure(0, weight=1)
+        self.contenedor.columnconfigure(0, weight=1)
+        self._vista = None
+        self.mostrar("inicio")
+
+    def _crear_vista(self, nombre):
+        """Crea la vista pedida (las vistas son de usar y tirar para empezar limpias)."""
+        ir_inicio = lambda: self.mostrar("inicio")
+        if nombre == "inicio":
+            return VistaInicio(self.contenedor, ir_a=self.mostrar)
+        if nombre == "avanzado":
+            return VistaAvanzado(self.contenedor, al_inicio=ir_inicio)
+        if nombre == "analizar":
+            return asistente.Wizard(self.contenedor, "Analizar oleaje en un punto",
+                                    pasos_analizar.PASOS_ANALIZAR, ir_inicio)
+        if nombre == "modelar":
+            return asistente.Wizard(self.contenedor, "Modelar propagación con SWAN",
+                                    pasos_modelar.PASOS_MODELAR, ir_inicio)
+        if nombre == "ver":
+            return asistente.Wizard(self.contenedor, "Ver una corrida SWAN",
+                                    pasos_ver.PASOS_VER, ir_inicio)
+        raise ValueError(f"Vista desconocida: {nombre}")
+
+    def mostrar(self, nombre):
+        """Reemplaza la vista visible por una nueva instancia de `nombre`."""
+        if self._vista is not None:
+            self._vista.destroy()
+        self._vista = self._crear_vista(nombre)
+        self._vista.grid(row=0, column=0, sticky="nsew")
 
 
 if __name__ == "__main__":
