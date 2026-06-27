@@ -58,7 +58,9 @@ decisiones de diseño.
 - Comentarios y mensajes de UI en **español neutro** (sin voseo).
 - Patrón **registro adaptativo** en productos (`requiere=[...]`, reportar lo que falta).
 - Correr tests tras cambios que toquen lógica; en este equipo a veces hace falta shell sin sandbox.
-- No commitear salvo que el usuario lo pida.
+- Commitea los cambios relevantes al terminar, con mensaje claro en español, e incluye en el
+  mismo commit la entrada del HANDOFF. Trabaja en la rama actual salvo que el usuario pida una
+  propia. No hagas push ni fuerces nada sin que el usuario lo pida.
 
 ## Docs
 

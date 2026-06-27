@@ -13,6 +13,22 @@
 
 ## Registro de cambios (más reciente primero)
 
+### 2026-06-27 · Fix UI web: «Siguiente» quedaba muerto tras cada tarea + regla de commit (Claude Code)
+*Qué/por qué:* tras descargar ERA5 (o cualquier tarea en hilo) la UI web **no dejaba
+avanzar** con «Siguiente». En `ui/app.js`, `setBusy(on)` deshabilitaba todos los botones
+`.btn.primary` al iniciar la tarea (`if (on) b.disabled = true`) pero **nunca los
+re-habilitaba** al terminar (no había rama para `on === false`). Como «Siguiente →» es
+`btn primary`, quedaba `disabled` y el clic no hacía nada. Afectaba a todos los botones
+primarios después de cualquier tarea (descarga, batimetría, tablero…).
+*Arreglo:* `setBusy` ahora hace `b.disabled = on` (deshabilita al ocupar, re-habilita al
+terminar).
+*Regla de proyecto:* a pedido del usuario, `CLAUDE.md` deja de prohibir commitear: ahora se
+**commitea** el trabajo relevante al terminar (mensaje en español + entrada de HANDOFF en el
+mismo commit), en la rama actual; sin push ni `--force` salvo que el usuario lo pida.
+*Archivos:* `ui/app.js`, `CLAUDE.md`, `HANDOFF.md`.
+*Notas:* fix de JS no cubierto por pytest (la suite no ejerce la UI web). El usuario verifica
+en la app: descargar ERA5 → «Siguiente» avanza a Revisión.
+
 ### 2026-06-27 · ERA5 serie con el CDS nuevo: ZIP multi-stream + valid_time + cache limpia (Claude Code)
 *Qué/por qué:* el camino «Analizar → Descargar de ERA5 por coordenada» fallaba. La causa
 estaba **oculta** porque el wizard mostraba «NoneType: None» (se corrigió antes en

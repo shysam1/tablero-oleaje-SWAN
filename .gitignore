@@ -11,3 +11,6 @@ salidas/
 
 # Preferencias locales de la máquina (rutas de diálogos)
 config.json
+
+# Logs de runtime del lanzador/app web (depuración, no código)
+*.log

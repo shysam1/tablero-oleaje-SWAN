@@ -94,7 +94,7 @@ function setBusy(on, indeterminate = false) {
     if (!on) inner.style.width = "0%";
   }
   document.querySelectorAll(".btn.primary").forEach((b) => {
-    if (on) b.disabled = true;
+    b.disabled = on;           // deshabilita al ocupar y RE-HABILITA al terminar
   });
 }
 
