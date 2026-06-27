@@ -88,3 +88,10 @@ def test_camino_ver_tiene_tres_pasos():
     import asistente
     assert len(pasos_ver.PASOS_VER) == 3
     assert all(issubclass(c, asistente.Paso) for c in pasos_ver.PASOS_VER)
+
+
+def test_camino_analizar_tiene_tres_pasos():
+    import pasos_analizar
+    import asistente
+    assert len(pasos_analizar.PASOS_ANALIZAR) == 3
+    assert all(issubclass(c, asistente.Paso) for c in pasos_analizar.PASOS_ANALIZAR)
