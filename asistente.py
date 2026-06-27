@@ -42,6 +42,10 @@ class MaquinaWizard:
         Valida el paso actual; si pasa, recoge en el contexto y avanza al
         siguiente (entrando en él). En el último paso recoge pero no cambia de
         índice. Devuelve (ok, mensaje).
+
+        Contrato para el caller: en el último paso `avanzar` recoge y devuelve
+        (True, "") sin cambiar de índice, así que el caller debe consultar
+        `es_ultimo()` ANTES de llamar a `avanzar` para decidir si cierra el wizard.
         """
         ok, msg = self.paso_actual().validar()
         if not ok:

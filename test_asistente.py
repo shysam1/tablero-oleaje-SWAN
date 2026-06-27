@@ -59,13 +59,21 @@ def test_ultimo_paso_recoge_pero_no_cambia_indice():
     assert m.contexto["hizo_b"] is True
 
 
+def test_entrar_notifica_al_paso_actual():
+    p0 = PasoFake("a")
+    m = asistente.MaquinaWizard([p0, PasoFake("b")])
+    m.entrar()
+    assert p0.entradas == 1
+
+
 def test_retroceder():
     p0, p1 = PasoFake("a"), PasoFake("b")
     m = asistente.MaquinaWizard([p0, p1])
+    m.entrar()                             # el caller real muestra el primer paso
     m.avanzar()
     assert m.retroceder() is True
     assert m.indice == 0
-    assert p0.entradas == 1                # vuelve a entrar al retroceder
+    assert p0.entradas == 2                # entró al mostrarlo + re-entró al retroceder
     assert m.retroceder() is False         # ya en el primero
 
 
