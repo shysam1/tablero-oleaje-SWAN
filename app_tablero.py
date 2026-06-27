@@ -1,7 +1,7 @@
 """
 Interfaz gráfica del Tablero de Oleaje.
 
-Arranca en una pantalla de inicio ("¿Qué querés hacer?") con tres caminos
+Arranca en una pantalla de inicio ("¿Qué quieres hacer?") con tres caminos
 guiados (analizar una serie, modelar con SWAN, ver una corrida existente) y un
 acceso al modo avanzado, que es la caja de herramientas de siempre (selector +
 Crear + Procesar SWAN + Descargar ERA5). Todo vive en la misma ventana, que
@@ -52,7 +52,7 @@ class VistaInicio(ttk.Frame):
         self.ir_a = ir_a              # callback: ir_a(nombre_vista)
         ttk.Label(self, text="Tablero de Oleaje",
                   font=("Segoe UI", 18, "bold")).pack(anchor="w")
-        ttk.Label(self, text="¿Qué querés hacer?",
+        ttk.Label(self, text="¿Qué quieres hacer?",
                   font=("Segoe UI", 12)).pack(anchor="w", pady=(2, 16))
 
         tarjetas = ttk.Frame(self)
@@ -65,7 +65,7 @@ class VistaInicio(ttk.Frame):
             ("🌊  Modelar propagación\ncon SWAN",
              "Desde cero: malla → batimetría → borde → correr → mapas.", "modelar"),
             ("🗺️  Ver una corrida\nSWAN ya hecha",
-             "Tenés la carpeta corrida y solo querés graficarla (mapas o video).",
+             "Tienes la carpeta corrida y solo quieres graficarla (mapas o video).",
              "ver"),
         ]
         for i, (titulo, desc, destino) in enumerate(datos):
