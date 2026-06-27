@@ -31,7 +31,7 @@ def _completar(malla, batimetria):
     return m, b
 
 
-def validar_caso(malla, batimetria, bordes, carpeta=None):
+def validar_caso(malla, batimetria, bordes, carpeta=None, requiere_bordes=True):
     """
     Comprueba la coherencia física del caso antes de generarlo/correrlo.
 
@@ -83,7 +83,7 @@ def validar_caso(malla, batimetria, bordes, carpeta=None):
                 f"someras la onda es más corta aún; considera más celdas.")
 
     # Condiciones de borde.
-    if not bordes:
+    if requiere_bordes and not bordes:
         errores.append("Define al menos una condición de borde (lado de entrada).")
     for bd in bordes:
         if bd["hs"] <= 0:
@@ -190,6 +190,66 @@ def escribir_caso(carpeta, nombre_archivo, **kwargs):
     ruta = (carpeta / nombre_archivo).with_suffix(".swn")
     ruta.write_text(construir_swn(**kwargs), encoding="utf-8")
     return ruta
+
+
+def validar_caso_anidado(malla_g, malla_n):
+    """
+    Comprueba la coherencia del par grande/nido. Devuelve (errores, avisos).
+
+    El nido debe estar contenido en el grande, en la misma zona UTM, y con celda
+    más fina (lo último es sólo aviso).
+    """
+    errores, avisos = [], []
+    gx0, gy0 = malla_g["xpc"], malla_g["ypc"]
+    gx1, gy1 = gx0 + malla_g["xlenc"], gy0 + malla_g["ylenc"]
+    nx0, ny0 = malla_n["xpc"], malla_n["ypc"]
+    nx1, ny1 = nx0 + malla_n["xlenc"], ny0 + malla_n["ylenc"]
+    if not (nx0 >= gx0 - 1e-6 and ny0 >= gy0 - 1e-6 and
+            nx1 <= gx1 + 1e-6 and ny1 <= gy1 + 1e-6):
+        errores.append("El nido no está contenido en el dominio grande; "
+                       "ajusta su centro o tamaño para que quede dentro.")
+
+    zg, zn = malla_g.get("zona_utm"), malla_n.get("zona_utm")
+    if zg and zn and zg != zn:
+        errores.append(f"El nido está en zona UTM {zn} y el grande en {zg}; "
+                       f"deben coincidir.")
+
+    cg = max(malla_g["xlenc"] / malla_g["mxc"], malla_g["ylenc"] / malla_g["myc"])
+    cn = max(malla_n["xlenc"] / malla_n["mxc"], malla_n["ylenc"] / malla_n["myc"])
+    if cn >= cg:
+        avisos.append(f"La celda del nido (~{cn:.0f} m) no es más fina que la del "
+                      f"grande (~{cg:.0f} m); el anidamiento aporta poco.")
+    return errores, avisos
+
+
+def escribir_par_anidado(carpeta, nombre_grande, nombre_nido, malla_g, bat_g,
+                         bordes, malla_n, bat_n, salidas=("Hs", "Tp", "Dir"),
+                         punto_espectral=None, estacionario=True, tiempo=None):
+    """
+    Escribe el par de `.swn` de un modelo anidado y devuelve (ruta_grande, ruta_nido).
+
+    El grande lleva NGRID + NESTOUT (recuadro del nido); el nido lleva BOU NEST y,
+    opcionalmente, un punto de salida espectral. Las mallas deben venir sin la clave
+    'zona_utm' (se quita en la GUI antes de llamar).
+    """
+    carpeta = Path(carpeta)
+    carpeta.mkdir(parents=True, exist_ok=True)
+    sname, nestfile = "nido1", "nest1"
+    nido = {"sname": sname, "nestfile": nestfile,
+            "xpn": malla_n["xpc"], "ypn": malla_n["ypc"],
+            "xlenn": malla_n["xlenc"], "ylenn": malla_n["ylenc"],
+            "mxn": malla_n["mxc"], "myn": malla_n["myc"]}
+    ruta_g = (carpeta / nombre_grande).with_suffix(".swn")
+    ruta_g.write_text(construir_swn(nombre_grande, malla_g, bat_g, bordes,
+                                    salidas=salidas, estacionario=estacionario,
+                                    tiempo=tiempo, nido=nido), encoding="utf-8")
+    ruta_n = (carpeta / nombre_nido).with_suffix(".swn")
+    ruta_n.write_text(construir_swn(nombre_nido, malla_n, bat_n, [],
+                                    salidas=salidas, estacionario=estacionario,
+                                    tiempo=tiempo, bou_nest=nestfile,
+                                    punto_espectral=punto_espectral),
+                      encoding="utf-8")
+    return ruta_g, ruta_n
 
 
 if __name__ == "__main__":
