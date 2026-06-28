@@ -44,7 +44,7 @@ Name: "desktopicon"; Description: "Crear un acceso directo en el Escritorio"; Gr
 [Files]
 ; Copia todo el proyecto excepto entorno, salidas, tests, docs de desarrollo, etc.
 Source: "{#SourceRoot}\*"; DestDir: "{app}"; Flags: recursesubdirs createallsubdirs ignoreversion; \
-  Excludes: "\.venv\*,\.venv,\.git\*,\.git,\.cursor\*,\.cursor,\dist\*,\dist,\salidas\*,\salidas,\__pycache__\*,*\__pycache__\*,*.pyc,\.pytest_cache\*,\.pytest_cache,test_*.py,conftest.py,\docs\*,\docs,*.log,*.lnk,config.json,*.nc,*.mat,HANDOFF.md,AGENTS.md,CLAUDE.md,empaquetar_entrega.*,empaquetar_instalador.bat,\installer\*,\installer"
+  Excludes: "\.venv\*,\.venv,\.git\*,\.git,\.gitignore,\.cursor\*,\.cursor,\dist\*,\dist,\salidas\*,\salidas,\__pycache__\*,*\__pycache__\*,*.pyc,\.pytest_cache\*,\.pytest_cache,test_*.py,conftest.py,\docs\*,\docs,*.log,*.lnk,config.json,*.nc,*.mat,*.md,*.vbs,preview_mac.html,empaquetar_entrega.*,empaquetar_instalador.bat,\installer\*,\installer"
 
 [Icons]
 Name: "{group}\Tablero de Oleaje"; Filename: "{app}\scripts\launch_windows.bat"; WorkingDir: "{app}"; IconFilename: "{sys}\imageres.dll"; IconIndex: 109; Comment: "Tablero de Oleaje (UI web)"
