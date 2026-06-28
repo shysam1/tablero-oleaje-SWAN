@@ -3,6 +3,9 @@ __pycache__/
 *.pyc
 .pytest_cache/
 
+# Entorno virtual local (no se versiona; se recrea con requirements.txt)
+.venv/
+
 # Salidas generadas por la herramienta (tableros, videos, NetCDF)
 salidas/
 

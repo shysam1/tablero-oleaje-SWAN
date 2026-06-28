@@ -13,6 +13,19 @@
 
 ## Registro de cambios (más reciente primero)
 
+### 2026-06-28 · Entorno de desarrollo para Cursor Cloud (Cursor)
+*Qué/por qué:* preparación del entorno en la VM de la nube: venv en `.venv/` con
+`--system-site-packages` (pywebview usa el backend GTK/WebKit2 del sistema), instalación
+de `requirements.txt` + `pytest`, y verificación end-to-end (suite en verde y app web
+corriendo en el display `:1`, flujo «Analizar» → tablero PNG).
+*Archivos:* `AGENTS.md` (nuevo, sección «Cursor Cloud specific instructions»),
+`.gitignore` (ignora `.venv/`), `HANDOFF.md`.
+*Notas:* correr pytest con `--basetemp="$HOME/pytest-tmp"` (si no, fallan en falso los
+tests de rutas por `seguridad.confina_usuario`). Dos tests de descarga ERA5 paralela
+(`test_descargar_serie_paralelo_max_dos`, `test_descargar_serie_largo_concatena_tramos`)
+hacen segfault en Linux por el HDF5 no thread-safe del wheel pip de netCDF4 (deseleccionarlos);
+no es bug del código. Detalle completo en `AGENTS.md`.
+
 ### 2026-06-27 · Repo público: sin rutas personales (Cursor)
 *Qué/por qué:* Eliminadas rutas personales del código y docs; tests de
 regresión usan variables de entorno `TABLERO_DATOS_SWAN` / `TABLERO_DATOS_OLEAJE`;
