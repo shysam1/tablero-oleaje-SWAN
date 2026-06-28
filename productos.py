@@ -20,6 +20,7 @@ import matplotlib.dates as mdates
 import matplotlib.pyplot as plt
 from scipy import stats
 
+import particion_espectral
 import productos_particion
 
 # np.trapz fue renombrado a np.trapezoid en numpy reciente; soportamos ambos.
@@ -319,6 +320,85 @@ def _dib_jonswap(ax, r):
     ax.grid(alpha=0.3)
 
 
+def _dim_frecuencia(da):
+    """Nombre de la dimensión de frecuencia en una DataArray (freq/frequency/f)."""
+    for nombre in ("freq", "frequency", "f"):
+        if nombre in da.dims:
+            return nombre
+    raise ValueError("no se encontró dimensión de frecuencia")
+
+
+def _sf_desde_efth(ds):
+    """Integra Efth(freq, dir) o Efth(time, freq, dir) → S(f) [m²/Hz]."""
+    efth = ds["Efth"]
+    freqs = efth["freq"].values
+    dirs = efth["dir"].values
+    _, ddir = particion_espectral._pesos(freqs, dirs)
+    sf = (efth * ddir).sum(dim="dir")
+    if "time" in sf.dims:
+        sf_vals = sf.mean("time").values
+        nota = "promedio temporal (Efth)"
+    else:
+        sf_vals = sf.values
+        nota = "integral direccional (Efth)"
+    return freqs, np.asarray(sf_vals, float), nota
+
+
+def _sf_desde_variable(ds):
+    """Lee Sf directamente (1D o media temporal)."""
+    sf_var = ds["Sf"]
+    dim_f = _dim_frecuencia(sf_var)
+    freqs = sf_var[dim_f].values
+    if "time" in sf_var.dims:
+        valores = sf_var.mean("time").values
+        nota = "promedio temporal (Sf)"
+    else:
+        valores = sf_var.values
+        nota = "medido (Sf)"
+    return freqs, np.asarray(valores, float), nota
+
+
+def _aplicable_espectro_medido(ds):
+    return "Sf" in ds.data_vars or "Efth" in ds.data_vars
+
+
+_MOTIVO_ESPECTRO_MEDIDO = "variable Sf o Efth (densidad espectral direccional)"
+
+
+def _calc_espectro_medido(ds):
+    if "Sf" in ds.data_vars:
+        f, s, fuente = _sf_desde_variable(ds)
+    else:
+        f, s, fuente = _sf_desde_efth(ds)
+    s = np.nan_to_num(s, nan=0.0)
+    if not np.isfinite(s).any() or float(np.nanmax(s)) <= 0.0:
+        raise ValueError("el espectro no tiene energía finita")
+    # Hs desde m0 para anotar en el panel
+    dfreq, _ = particion_espectral._pesos(f, np.array([0.0, 1.0]))
+    m0 = float(np.sum(s * dfreq))
+    hs = 4.0 * np.sqrt(m0) if m0 > 0 else np.nan
+    fp = float(f[int(np.argmax(s))]) if s.size else np.nan
+    tp = 1.0 / fp if fp > 0 else np.nan
+    return {"f": f, "S": s, "hs": hs, "tp": tp, "fuente": fuente}
+
+
+def _dib_espectro_medido(ax, r):
+    ax.plot(r["f"], r["S"], color=AZUL)
+    ax.fill_between(r["f"], r["S"], alpha=0.2, color=AZUL)
+    titulo = "Espectro medido S(f)"
+    if np.isfinite(r.get("hs", np.nan)):
+        titulo += f"\n(Hs ≈ {r['hs']:.2f} m"
+        if np.isfinite(r.get("tp", np.nan)):
+            titulo += f", Tp ≈ {r['tp']:.1f} s"
+        titulo += f"; {r['fuente']})"
+    else:
+        titulo += f"\n({r['fuente']})"
+    ax.set_title(titulo)
+    ax.set_xlabel("Frecuencia [Hz]")
+    ax.set_ylabel("S(f) [m²/Hz]")
+    ax.grid(alpha=0.3)
+
+
 # Registro central de productos. El orden define el orden en el tablero.
 PRODUCTOS = [
     {"nombre": "Resumen estadístico", "requiere": [], "proyeccion": None,
@@ -347,8 +427,10 @@ PRODUCTOS = [
      "calcular": _calc_rosa, "dibujar": _dib_rosa},
     {"nombre": "Espectro JONSWAP (reconstruido)", "requiere": ["Hs", "Tp"], "proyeccion": None,
      "calcular": _calc_jonswap, "dibujar": _dib_jonswap},
-    {"nombre": "Espectro medido S(f)", "requiere": ["Sf"], "proyeccion": None,
-     "calcular": None, "dibujar": None},
+    {"nombre": "Espectro medido S(f)", "requiere": [], "proyeccion": None,
+     "aplicable": _aplicable_espectro_medido,
+     "motivo_inaplicable": _MOTIVO_ESPECTRO_MEDIDO,
+     "calcular": _calc_espectro_medido, "dibujar": _dib_espectro_medido},
     {"nombre": "Partición sea/swell (serie)", "requiere": ["Efth"],
      "proyeccion": None,
      "calcular": productos_particion.calcular_serie,

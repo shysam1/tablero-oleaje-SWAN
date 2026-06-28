@@ -827,17 +827,29 @@ def test_descargar_raster_rechaza_respuesta_no_netcdf(monkeypatch, tmp_path):
         io_batimetria.descargar_raster(-33.1, -32.9, -71.8, -71.5, tmp_path / "r.nc")
 
 
-def _nc_espectro_sintetico(ruta):
-    """Crea un .nc tipo ERA5 2D spectra: d2fd en log10, dims (time, freq, dir)."""
+def _nc_espectro_sintetico(ruta, *, con_grilla=False):
+    """Crea un .nc tipo ERA5 2D spectra: d2fd en log10."""
     import xarray as xr
     t = np.array(["2024-07-28T00"], dtype="datetime64[ns]")
     freq = 0.03453 * 1.1 ** np.arange(30)         # 30 frecuencias ERA5
     direction = np.arange(7.5, 360.0, 15.0)       # 24 direcciones ERA5
     dens = np.full((len(t), len(freq), len(direction)), 0.5)   # densidad lineal
     d2fd = np.log10(dens)                          # ERA5 la almacena en log10
-    ds = xr.Dataset(
-        {"d2fd": (("time", "frequency", "direction"), d2fd)},
-        coords={"time": t, "frequency": freq, "direction": direction})
+    if con_grilla:
+        lat = np.array([-37.0, -36.75])
+        lon = np.array([286.5, 286.75])            # 0–360 como ERA5
+        d2fd = np.broadcast_to(
+            d2fd[:, :, :, np.newaxis, np.newaxis],
+            (len(t), len(freq), len(direction), len(lat), len(lon)),
+        ).copy()
+        ds = xr.Dataset(
+            {"d2fd": (("time", "frequency", "direction", "latitude", "longitude"), d2fd)},
+            coords={"time": t, "frequency": freq, "direction": direction,
+                    "latitude": lat, "longitude": lon})
+    else:
+        ds = xr.Dataset(
+            {"d2fd": (("time", "frequency", "direction"), d2fd)},
+            coords={"time": t, "frequency": freq, "direction": direction})
     ds.to_netcdf(ruta)
 
 
@@ -849,6 +861,95 @@ def test_parsear_espectro_decodifica_log10_y_reordena(tmp_path):
     assert set(["Efth"]) <= set(esp.data_vars)
     # 10**log10(0.5) = 0.5 (des-logueo correcto).
     assert float(esp["Efth"].isel(time=0, freq=0, dir=0)) == pytest.approx(0.5)
+
+
+def test_parsear_espectro_selecciona_punto_en_grilla(tmp_path):
+    """El parser debe reducir lat/lon a un solo punto (como la serie ERA5)."""
+    ruta = tmp_path / "espectro_grilla.nc"
+    _nc_espectro_sintetico(ruta, con_grilla=True)
+    esp = io_era5._parsear_espectro_nc(ruta, lat=-37.0, lon=-73.5)
+    assert dict(esp.sizes) == {"time": 1, "freq": 30, "dir": 24}
+    assert "latitude" not in esp["Efth"].dims
+
+
+def test_ruta_cache_espectro_comparte_carpeta_con_serie():
+    c_serie, _ = io_era5.ruta_cache_serie(-37.0, -73.5, "2024-01-01", "2024-01-31")
+    c_esp, nc_esp = io_era5.ruta_cache_espectro(-37.0, -73.5, "2024-01-01", "2024-01-31")
+    assert c_serie == c_esp
+    assert nc_esp.name == "era5_espectro.nc"
+
+
+def test_descargar_espectro_tramos_y_cache_limpia(tmp_path, monkeypatch):
+    """Espectro ERA5: parseo en punto, tramos y .nc limpio en carpeta de la serie."""
+    import xarray as xr
+    import rutas
+    monkeypatch.setattr(rutas, "RAIZ_SALIDAS", tmp_path)
+    # Un hilo a la vez: netCDF4 no es thread-safe al escribir en tests paralelos.
+    monkeypatch.setattr(io_era5, "_MAX_TRAMOS_PARALELO", 1)
+
+    def _falso_retrieve(dataset, peticion, destino):
+        mes = int(peticion["month"][0])
+        t = np.array([f"2024-{mes:02d}-15T00", f"2024-{mes:02d}-15T03"],
+                     dtype="datetime64[ns]")
+        freq = 0.03453 * 1.1 ** np.arange(30)
+        direction = np.arange(7.5, 360.0, 15.0)
+        lat = np.array([-36.75, -37.25])
+        lon = np.array([286.5, 286.75])
+        dens = np.full((len(t), len(freq), len(direction), len(lat), len(lon)), 0.5)
+        d2fd = np.log10(dens)
+        xr.Dataset(
+            {"d2fd": (("time", "frequency", "direction", "latitude", "longitude"), d2fd)},
+            coords={"time": t, "frequency": freq, "direction": direction,
+                    "latitude": lat, "longitude": lon},
+        ).to_netcdf(destino)
+
+    class _ClienteFalso:
+        def retrieve(self, dataset, peticion, destino):
+            _falso_retrieve(dataset, peticion, destino)
+
+    monkeypatch.setattr(io_era5, "_cliente", lambda: _ClienteFalso())
+    ds = io_era5.descargar_espectro(-37.0, -73.5, "2024-01-01", "2024-03-31")
+    try:
+        assert ds.sizes["time"] == 6
+        assert set(ds["Efth"].dims) == {"time", "freq", "dir"}
+        carpeta, destino = io_era5.ruta_cache_espectro(
+            -37.0, -73.5, "2024-01-01", "2024-03-31")
+        assert destino.is_file()
+        assert io_era5._espectro_cache_limpia(destino)
+        assert (carpeta / "chunks_espectro").is_dir()
+    finally:
+        ds.close()
+
+
+def test_producto_espectro_medido_desde_efth():
+    import xarray as xr
+    import productos
+    freqs, dirs, efth = _espectro_bimodal()
+    ds = xr.Dataset(
+        {"Efth": (("time", "freq", "dir"), np.stack([efth])),
+         "Hs": ("time", [1.0]), "Tp": ("time", [10.0]), "Dir": ("time", [270.0])},
+        coords={"time": np.array(["2024-07-28T00"], dtype="datetime64[ns]"),
+                "freq": freqs, "dir": dirs})
+    informe = productos.evaluar(ds)
+    item = next(it for it in informe if it["nombre"] == "Espectro medido S(f)")
+    assert item["disponible"]
+    assert item["resultado"]["S"].max() > 0
+
+
+def test_producto_espectro_medido_desde_sf():
+    import xarray as xr
+    import productos
+    freqs = np.linspace(0.04, 0.40, 30)
+    sf = np.exp(-((freqs - 0.10) / 0.02) ** 2)
+    ds = xr.Dataset(
+        {"Sf": (("freq",), sf), "Hs": ("time", [1.0]), "Tp": ("time", [10.0]),
+         "Dir": ("time", [200.0])},
+        coords={"time": np.array(["2024-07-28T00"], dtype="datetime64[ns]"),
+                "freq": freqs})
+    informe = productos.evaluar(ds)
+    item = next(it for it in informe if it["nombre"] == "Espectro medido S(f)")
+    assert item["disponible"]
+    assert item["resultado"]["tp"] == pytest.approx(10.0, abs=1.0)
 
 
 # --------------------------- Productos de partición ---------------------------

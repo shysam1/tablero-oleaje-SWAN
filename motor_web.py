@@ -278,9 +278,8 @@ def descargar_era5(lat, lon, inicio, fin, con_viento=True, con_espectro=False,
             esp = None
             try:
                 esp = io_era5.descargar_espectro(lat, lon, inicio, fin, log_fn=_log)
-                esp_dest = nc.parent / "era5_espectro.nc"
-                io_era5._escribir_nc_atomico(esp, esp_dest)
-                log.append(f"Espectro ERA5: {esp.sizes.get('time', 0)} pasos → {esp_dest.name}.")
+                n_t = int(esp.sizes.get("time", 0))
+                log.append(f"Espectro ERA5: {n_t} pasos → era5_espectro.nc.")
             finally:
                 if esp is not None:
                     esp.close()
