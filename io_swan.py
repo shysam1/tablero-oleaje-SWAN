@@ -446,14 +446,16 @@ def cargar_corrida(carpeta, utm_large=UTM_LARGE_DEFAULT, titulos=None):
 
 
 if __name__ == "__main__":
+    import argparse
+
     try:
         sys.stdout.reconfigure(encoding="utf-8")
     except Exception:
         pass
 
-    CARPETA = Path(
-        r"C:\Users\123ja\OneDrive\Escritorio\Proyectos\Python"
-        r"\SWAN_Coronel\extremo_Tr100")
+    ap = argparse.ArgumentParser(description="Inspecciona una corrida SWAN estacionaria.")
+    ap.add_argument("carpeta", type=Path, help="Carpeta con el caso SWAN")
+    CARPETA = ap.parse_args().carpeta
     TITULOS = {"large": "Dominio grande (Golfo de Arauco)",
                "n1": "Dominio anidado N1 (Bahía de Coronel)"}
 

@@ -13,6 +13,16 @@
 
 ## Registro de cambios (más reciente primero)
 
+### 2026-06-27 · Repo público: sin rutas personales (Cursor)
+*Qué/por qué:* Eliminadas rutas personales del código y docs; tests de
+regresión usan variables de entorno `TABLERO_DATOS_SWAN` / `TABLERO_DATOS_OLEAJE`;
+bloques `__main__` piden la entrada por CLI. Repo en GitHub hecho público.
+*Archivos:* `test_regresion.py`, `Tablero Oleaje.vbs`, `tablero_oleaje.py`,
+`io_oleaje.py`, `tablero_swan.py`, `io_swan.py`, `io_swan_nonst.py`, `video_swan.py`,
+`productos_swan.py`, `HANDOFF.md`, `docs/plans/2026-06-27-nesting-swan.md`
+*Notas:* Sin `TABLERO_DATOS_*` los tests con datos reales se saltan; en local exportar
+esas vars apuntando a tus carpetas de prueba.
+
 ### 2026-06-27 · Revisión final pre-entrega (Cursor)
 *Qué/por qué:* auditoría completa Windows + macOS antes de envío: suite de tests
 (147 passed), imports/smoke, zip de entrega regenerado, guías alineadas con
@@ -539,11 +549,8 @@ coherencia entre módulos.
 
 ## Qué es
 Herramienta personal reutilizable de análisis de oleaje, construida iterativamente
-para que el usuario (estudiante ing. civil hidráulica, UdeC) aprenda `xarray`
-dirigiendo a la IA. Ubicación:
-`C:\Users\123ja\OneDrive\Escritorio\Proyectos\Herramientas computacionales\Tablero Oleaje\`
-(La carpeta "Herramientas computacionales" = herramientas reutilizables, distinta de
-`Proyectos\Python` = tareas académicas.)
+para aprender `xarray` dirigiendo a la IA. Raíz del repositorio: carpeta del clone
+local de `tablero-oleaje` (código separado de carpetas de tareas académicas).
 
 Patrón común de todo el código: **registro adaptativo** — cada producto declara
 `requiere=[...]`; el pipeline genera solo lo que los datos permiten y reporta lo que falta.
@@ -672,9 +679,8 @@ Patrón común de todo el código: **registro adaptativo** — cada producto dec
   los diálogos). `README.md`: doc de uso/flujo/módulos.
 
 ## Entorno
-- Python 3.13: `C:\Users\123ja\AppData\Local\Programs\Python\Python313\`
-  (`python.exe` para la app web; **`pythonw.exe` no sirve** con `app_web.py` en este PC).
-- **`py -3w` no funciona** aquí (*No suitable Python runtime*); usar `python` o ruta fija.
+- Python 3.10+ recomendado (probado con 3.13). Usar `python` en PATH; en Windows,
+  **`pythonw.exe` puede fallar** con `app_web.py` + pywebview — preferir `python.exe`.
 - Instalados: `xarray` 2026.4.0, `netcdf4` 1.7.4, `scipy`, `matplotlib`, `windrose`,
   `cmocean`, `ffmpeg` (Gyan, vía winget), **`pywebview`** (UI principal), WebView2/Edge.
 

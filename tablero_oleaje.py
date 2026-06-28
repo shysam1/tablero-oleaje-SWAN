@@ -113,14 +113,13 @@ def generar_tablero(ruta_entrada, ruta_nc=None, ruta_png=None, cargar_fn=None):
 
 
 if __name__ == "__main__":
+    import argparse
+
     try:
         sys.stdout.reconfigure(encoding="utf-8")
     except Exception:
         pass
 
-    # Caso base: nodo de oleaje frente a Talcahuano (Tarea 3 Costas).
-    RUTA_MAT = Path(
-        r"C:\Users\123ja\OneDrive\Escritorio\Proyectos\Python"
-        r"\Tarea 3 Costas\Datos_Nodo10_37S_75W_Talcahuano.mat")
-
-    generar_tablero(RUTA_MAT)        # salidas en salidas\<nombre del archivo>\
+    ap = argparse.ArgumentParser(description="Genera tablero de curvas desde serie de oleaje.")
+    ap.add_argument("entrada", type=Path, help="Archivo .mat, .csv o .nc con serie temporal")
+    generar_tablero(ap.parse_args().entrada)

@@ -131,17 +131,20 @@ def guardar_netcdf(ds, ruta):
 
 
 if __name__ == "__main__":
+    import argparse
+
     # Permite imprimir tildes en la consola de Windows sin que reviente.
     try:
         sys.stdout.reconfigure(encoding="utf-8")
     except Exception:
         pass
 
-    # Caso base: nodo de oleaje frente a Talcahuano (Tarea 3 Costas).
-    RUTA_MAT = Path(
-        r"C:\Users\123ja\OneDrive\Escritorio\Proyectos\Python"
-        r"\Tarea 3 Costas\Datos_Nodo10_37S_75W_Talcahuano.mat")
-    RUTA_NC = Path(__file__).with_name("oleaje_talcahuano.nc")
+    ap = argparse.ArgumentParser(description="Carga serie de oleaje y opcionalmente guarda NetCDF.")
+    ap.add_argument("entrada", type=Path, help="Archivo .mat, .csv o .nc")
+    ap.add_argument("-o", "--salida", type=Path, default=None, help="Ruta NetCDF de salida")
+    args = ap.parse_args()
+    RUTA_MAT = args.entrada
+    RUTA_NC = args.salida or Path(__file__).with_name("oleaje_exportado.nc")
 
     ds = cargar(RUTA_MAT)
     print(ds)

@@ -731,7 +731,7 @@ Expected: PASS (incluye los 2 nuevos: 6 pasos y `PasoNido` apagado no agrega dom
 Crear un archivo temporal FUERA del repo y correrlo vía stdin desde la carpeta del proyecto (no usar `mainloop`):
 
 ```
-cd "C:/Users/123ja/OneDrive/Escritorio/Proyectos/Herramientas computacionales/Tablero Oleaje" && python - <<'PY'
+cd /ruta/al/tablero-oleaje && python - <<'PY'
 import app_tablero, asistente
 app = app_tablero.AppTablero()
 app.update_idletasks(); app.update()

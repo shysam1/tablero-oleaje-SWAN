@@ -6,12 +6,8 @@ dir = fso.GetParentFolderName(WScript.ScriptFullName)
 app = dir & "\app_web.py"
 sh.CurrentDirectory = dir
 
-' pythonw.exe cierra app_web.py al instante (exit 1) con pywebview en este PC;
-' python.exe funciona. WindowStyle 0 oculta la consola.
-python = "C:\Users\123ja\AppData\Local\Programs\Python\Python313\python.exe"
-If Not fso.FileExists(python) Then
-  python = "python"
-End If
+' pythonw.exe puede fallar con pywebview; python.exe + WindowStyle 0 oculta la consola.
+python = "python"
 
 On Error Resume Next
 sh.Run """" & python & """ """ & app & """", 0, False

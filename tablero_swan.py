@@ -74,12 +74,13 @@ def generar_tablero_swan(carpeta, ruta_png=None, utm_large=None, titulos=None):
 
 
 if __name__ == "__main__":
+    import argparse
+
     try:
         sys.stdout.reconfigure(encoding="utf-8")
     except Exception:
         pass
 
-    CARPETA = Path(
-        r"C:\Users\123ja\OneDrive\Escritorio\Proyectos\Python"
-        r"\SWAN_Coronel\extremo_Tr100")
-    generar_tablero_swan(CARPETA)
+    ap = argparse.ArgumentParser(description="Genera tablero de mapas desde corrida SWAN estacionaria.")
+    ap.add_argument("carpeta", type=Path, help="Carpeta con el caso SWAN (.swn + salidas)")
+    generar_tablero_swan(ap.parse_args().carpeta)

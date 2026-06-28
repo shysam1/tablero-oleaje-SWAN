@@ -160,6 +160,14 @@ pytest test_regresion.py test_asistente.py -v
 
 `test_regresion.py` carga las corridas conocidas y comprueba los valores clave (Hs
 de borde, número de pasos, orientación); si los datos de prueba no están en disco,
-esos tests se saltan solos. `test_asistente.py` cubre la navegación del wizard
+esos tests se saltan solos. En tu máquina puedes apuntar a carpetas locales con:
+
+```powershell
+$env:TABLERO_DATOS_SWAN = "C:\ruta\a\SWAN_Coronel"
+$env:TABLERO_DATOS_OLEAJE = "C:\ruta\a\serie.mat"
+pytest test_regresion.py -v
+```
+
+`test_asistente.py` cubre la navegación del wizard
 (avanzar/retroceder, validación, contexto compartido) y que cada camino tenga sus
 pasos. Córrelos antes de dar por buena cualquier modificación.

@@ -8,8 +8,13 @@ generan figuras.
 
 Uso:  pytest test_regresion.py -v
 Si los datos de prueba no están en disco, los tests que los necesitan se saltan.
+
+Variables de entorno opcionales (solo en tu máquina, no van al repo):
+  TABLERO_DATOS_SWAN   → carpeta con corridas SWAN de referencia (p. ej. SWAN_Coronel)
+  TABLERO_DATOS_OLEAJE → archivo .mat/.csv/.nc de oleaje en un punto
 """
 
+import os
 from pathlib import Path
 
 import numpy as np
@@ -24,9 +29,16 @@ import seguridad
 import swan_builder
 import swan_runner
 
-BASE_SWAN = Path(r"C:\Users\123ja\OneDrive\Escritorio\Proyectos\Python\SWAN_Coronel")
-RUTA_OLEAJE = Path(r"C:\Users\123ja\OneDrive\Escritorio\Proyectos\Python"
-                   r"\Tarea 3 Costas\Datos_Nodo10_37S_75W_Talcahuano.mat")
+
+def _ruta_datos(var_env: str) -> Path:
+    valor = os.environ.get(var_env, "").strip()
+    if not valor:
+        return Path(f"_sin_configurar_{var_env}_")
+    return Path(valor)
+
+
+BASE_SWAN = _ruta_datos("TABLERO_DATOS_SWAN")
+RUTA_OLEAJE = _ruta_datos("TABLERO_DATOS_OLEAJE")
 
 
 def _saltar_si_falta(ruta):

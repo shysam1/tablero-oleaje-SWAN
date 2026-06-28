@@ -164,6 +164,8 @@ def imprimir_capacidades(informe):
 
 
 if __name__ == "__main__":
+    import argparse
+
     try:
         sys.stdout.reconfigure(encoding="utf-8")
     except Exception:
@@ -172,9 +174,9 @@ if __name__ == "__main__":
     from pathlib import Path
     import io_swan
 
-    CARPETA = Path(
-        r"C:\Users\123ja\OneDrive\Escritorio\Proyectos\Python"
-        r"\SWAN_Coronel\extremo_Tr100")
+    ap = argparse.ArgumentParser(description="Evalúa productos disponibles para una corrida SWAN.")
+    ap.add_argument("carpeta", type=Path, help="Carpeta con el caso SWAN")
+    CARPETA = ap.parse_args().carpeta
     corrida = io_swan.cargar_corrida(CARPETA)
     informe = evaluar(corrida)
     imprimir_capacidades(informe)
