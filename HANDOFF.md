@@ -27,7 +27,7 @@ arranque diario en `scripts/launch_*`. Los lanzadores antiguos
   `pip install`, log en `salidas/install.log`), `scripts/launch_windows.bat`,
   `installer/windows/TableroOleaje.iss` (Inno Setup 6: chequea Python en
   `InitializeSetup`, instala en `C:\Program Files\Tablero de Oleaje`, accesos
-  directos, desinstalador), `empaquetar_instalador.bat` (compila → `dist/`).
+  directos, desinstalador), `empaquetar_instalador.bat` (compila → `installer/windows/`).
 - **macOS:** `scripts/bootstrap_mac.sh` (Python 3.11+, `.venv` junto al código si es
   escribible o en `~/Library/Application Support/Tablero de Oleaje/` si el `.app` es
   de solo lectura; diálogo `osascript` si falta Python), `scripts/launch_mac.sh`,

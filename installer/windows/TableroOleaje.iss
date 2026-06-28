@@ -28,7 +28,8 @@ DefaultDirName={autopf}\Tablero de Oleaje
 DefaultGroupName=Tablero de Oleaje
 DisableProgramGroupPage=yes
 PrivilegesRequired=admin
-OutputDir={#SourceRoot}\dist
+; El .exe se genera junto a este script, en  installer\windows
+OutputDir=.
 OutputBaseFilename=Tablero_Oleaje_Setup_{#MyAppVersion}
 Compression=lzma2
 SolidCompression=yes

@@ -20,3 +20,6 @@ config.json
 
 # Paquetes zip generados para entrega a clientes
 dist/
+
+# Instalador .exe compilado (binario, no se versiona; se regenera con Inno Setup)
+installer/windows/*.exe

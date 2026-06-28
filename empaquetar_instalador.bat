@@ -6,7 +6,7 @@ rem ============================================================================
 rem Tablero de Oleaje - compila el instalador .exe (Inno Setup 6)
 rem =============================================================================
 rem Requiere Inno Setup 6 instalado. Genera:
-rem   dist\Tablero_Oleaje_Setup_1.0.0.exe
+rem   installer\windows\Tablero_Oleaje_Setup_1.0.0.exe
 rem =============================================================================
 
 cd /d "%~dp0"
@@ -30,8 +30,6 @@ if not defined ISCC (
   exit /b 1
 )
 
-if not exist "dist" mkdir "dist"
-
 echo Compilando instalador con Inno Setup...
 "%ISCC%" "installer\windows\TableroOleaje.iss"
 if errorlevel 1 (
@@ -44,7 +42,7 @@ if errorlevel 1 (
 
 echo.
 echo Listo. Instalador generado en:
-echo   dist\Tablero_Oleaje_Setup_1.0.0.exe
+echo   installer\windows\Tablero_Oleaje_Setup_1.0.0.exe
 echo.
-if exist "dist" start "" explorer.exe "dist"
+if exist "installer\windows" start "" explorer.exe "installer\windows"
 endlocal

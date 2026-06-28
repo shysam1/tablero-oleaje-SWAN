@@ -59,7 +59,7 @@ Arranques siguientes
 | `scripts/check_prereqs.ps1` | Crear (opcional) | Python, WebView2, espacio disco, internet |
 | `iniciar_windows.bat` | Modificar | Delegar en bootstrap + launch (compatibilidad zip manual) |
 | `installer/windows/TableroOleaje.iss` | Crear | Script Inno Setup |
-| `empaquetar_instalador.bat` | Crear | Invoca compilador Inno Setup → `dist/Tablero_Oleaje_Setup_1.0.0.exe` |
+| `empaquetar_instalador.bat` | Crear | Invoca compilador Inno Setup → `installer/windows/Tablero_Oleaje_Setup_1.0.0.exe` |
 | `GUIAS DE USO/GUIA INSTALACION WINDOWS.txt` | Crear | Guía 1 página (Python, WebView2, SWAN/ffmpeg opcionales) |
 | `empaquetar_entrega.ps1` | Revisar | Reutilizar lista de archivos a copiar |
 | `HANDOFF.md` | Actualizar | Tras implementar |
@@ -136,7 +136,7 @@ rem Requiere Inno Setup 6 en PATH o ruta estándar
 "C:\Program Files (x86)\Inno Setup 6\ISCC.exe" "%~dp0installer\windows\TableroOleaje.iss"
 ```
 
-Salida: `dist\Tablero_Oleaje_Setup_1.0.0.exe`
+Salida: `installer\windows\Tablero_Oleaje_Setup_1.0.0.exe`
 
 ---
 
@@ -156,7 +156,7 @@ Actualizar `LEEME PRIMERO.txt` para mencionar el instalador `.exe` como opción 
 
 ## Fase 4 — Distribución
 
-1. `empaquetar_instalador.bat` → genera `.exe` en `dist/`.
+1. `empaquetar_instalador.bat` → genera `.exe` en `installer/windows/`.
 2. Mantener `empaquetar_entrega.bat` → zip clásico como respaldo.
 3. GitHub Release `v1.0.0`:
    - `Tablero_Oleaje_Setup_1.0.0.exe`
