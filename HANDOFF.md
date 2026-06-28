@@ -13,6 +13,17 @@
 
 ## Registro de cambios (más reciente primero)
 
+### 2026-06-28 · Planes instalador Pro Win/Mac (Cursor)
+*Qué/por qué:* Documentados planes para instalador gráfico Windows (Inno Setup
+1.0.0) y `.dmg` macOS (sin firma, universal), con decisiones de producto
+cerradas. Pendiente de implementación en PC del usuario.
+*Archivos:* `docs/plans/2026-06-28-instalador-windows.md`,
+`docs/plans/2026-06-28-instalador-mac.md`, `HANDOFF.md`
+*Notas:* Windows primero. Python lo instala el usuario (nota en instalador);
+internet obligatoria 1ª vez; SWAN/ffmpeg solo en guía; distribución GitHub
+Releases + envío directo. Mac: Gatekeeper → clic derecho Abrir; `.venv` en
+`~/Library/Application Support/Tablero de Oleaje/`.
+
 ### 2026-06-28 · Entorno de desarrollo para Cursor Cloud (Cursor)
 *Qué/por qué:* preparación del entorno en la VM de la nube: venv en `.venv/` con
 `--system-site-packages` (pywebview usa el backend GTK/WebKit2 del sistema), instalación
