@@ -1,9 +1,8 @@
 # Instalador Pro macOS — Plan de implementación
 
-> **Estado:** planificado, pendiente de implementación (versión **1.0**).
-> **Orden:** implementar **después** del instalador Windows (`docs/plans/2026-06-28-instalador-windows.md`).
+> **Estado:** IMPLEMENTADO (2026-06-28, scripts + bundle `.app` + `.dmg` + guía).
+> Pendiente solo generar/probar el `.dmg` y el icono `.icns` en Mac real — lo hace el usuario.
 > **Para el agente:** leer este documento + `HANDOFF.md` antes de tocar código.
-> El usuario generará y probará el `.dmg` en su Mac.
 
 **Goal:** Que una persona sin conocimientos técnicos instale Tablero de Oleaje arrastrando la app a Aplicaciones, sin Terminal ni `chmod +x`, y abra la app con doble clic.
 

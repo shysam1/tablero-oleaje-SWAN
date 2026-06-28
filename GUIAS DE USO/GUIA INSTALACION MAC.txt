@@ -1,0 +1,86 @@
+================================================================================
+  TABLERO DE OLEAJE - GUIA DE INSTALACION (macOS)
+================================================================================
+
+Esta guia explica como instalar la aplicacion con el instalador .dmg.
+Si en su lugar recibiste una carpeta .zip, abre el archivo "LEEME PRIMERO.txt".
+
+
+  REQUISITOS
+  ----------
+  - macOS 11 (Big Sur) o superior.
+  - Python 3.11 o superior (desde python.org o con Homebrew).
+  - Unos 500 MB de espacio libre.
+  - Conexion a internet la PRIMERA vez (para descargar las librerias).
+  - No hace falta instalar nada para la ventana web: macOS ya trae WebKit.
+
+
+  PASO 1 - INSTALAR PYTHON (si no lo tienes)
+  ------------------------------------------
+  Opcion A (recomendada):  https://www.python.org/downloads/macos/
+    Descarga e instala Python 3.11 o superior.
+  Opcion B (Homebrew):     brew install python@3.12
+
+
+  PASO 2 - INSTALAR TABLERO DE OLEAJE
+  -----------------------------------
+  1. Haz doble clic en el archivo:  Tablero de Oleaje 1.0.dmg
+  2. En la ventana que aparece, arrastra "Tablero de Oleaje" sobre la carpeta
+     "Aplicaciones".
+  3. Expulsa el .dmg cuando termine la copia.
+
+
+  PASO 3 - PRIMERA APERTURA (IMPORTANTE)
+  --------------------------------------
+  La app no esta firmada con un certificado de Apple de pago, asi que la
+  primera vez debes abrirla de forma especial:
+
+  1. Ve a la carpeta Aplicaciones.
+  2. Haz CLIC DERECHO (o Control + clic) sobre "Tablero de Oleaje".
+  3. Elige "Abrir".
+  4. En el aviso, vuelve a pulsar "Abrir".
+
+  Solo hace falta hacerlo asi la primera vez. Despues abre con doble clic.
+
+  El primer arranque crea un entorno Python y descarga las librerias: necesita
+  internet y puede tardar varios minutos.
+
+
+  HERRAMIENTAS OPCIONALES (SWAN y ffmpeg)
+  ---------------------------------------
+  No vienen con el instalador. Solo son necesarias para modelar con SWAN y
+  para generar videos (ffmpeg). Consulta la seccion correspondiente en
+  "GUIA DE USO MAC.txt".
+
+
+  PROBLEMAS FRECUENTES
+  --------------------
+  * "No se puede abrir porque proviene de un desarrollador no identificado":
+      Es lo esperado. Usa clic derecho -> Abrir -> Abrir (ver PASO 3).
+
+  * "No se encontro Python":
+      Instala Python 3.11+ (PASO 1) y vuelve a abrir la app.
+
+  * El primer arranque falla al instalar librerias:
+      Revisa tu internet y el archivo install.log en:
+        ~/Library/Application Support/Tablero de Oleaje/
+      Vuelve a abrir la aplicacion.
+
+  * Mac con Apple Silicon (M1/M2/M3/M4) o Intel:
+      pip instala automaticamente las versiones correctas. Si falla netCDF4,
+      revisa la seccion "Problemas frecuentes" de "GUIA DE USO MAC.txt".
+
+
+  DONDE QUEDAN TUS DATOS
+  ----------------------
+  - Entorno y registros:  ~/Library/Application Support/Tablero de Oleaje/
+  - Resultados (graficos, videos, etc.):  carpeta  salidas/
+
+
+  DESINSTALAR
+  -----------
+  1. Arrastra "Tablero de Oleaje" desde Aplicaciones a la Papelera.
+  2. (Opcional) Borra la carpeta:
+        ~/Library/Application Support/Tablero de Oleaje/
+
+================================================================================

@@ -1,8 +1,8 @@
 # Instalador Pro Windows — Plan de implementación
 
-> **Estado:** planificado, pendiente de implementación (versión **1.0**).
+> **Estado:** IMPLEMENTADO (2026-06-28, scripts + `.iss` + guía). Pendiente solo
+> compilar y probar el `.exe` en PC Windows real (Inno Setup 6) — lo hace el usuario.
 > **Para el agente:** leer este documento + `HANDOFF.md` antes de tocar código.
-> El usuario compilará y probará el `.exe` en su PC Windows (Inno Setup).
 
 **Goal:** Que una persona sin conocimientos técnicos instale Tablero de Oleaje con un asistente gráfico (`.exe`), sin instalar Python manualmente durante el setup del instalador (Python debe estar **ya instalado** en el sistema), y abra la app desde el escritorio o el menú Inicio.
 

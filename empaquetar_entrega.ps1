@@ -28,6 +28,7 @@ Write-Host ""
 $carpetasIncluir = @(
   "ui",
   "assets",
+  "scripts",
   "GUIAS DE USO"
 )
 

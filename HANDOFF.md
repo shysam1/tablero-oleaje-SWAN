@@ -13,6 +13,44 @@
 
 ## Registro de cambios (más reciente primero)
 
+### 2026-06-28 · Instaladores Pro Windows (.exe) y macOS (.dmg) (Cursor)
+*Qué/por qué:* implementados los planes de instalador gráfico (versión 1.0.0).
+Objetivo: que un usuario no técnico instale con asistente/arrastrar, sin tocar
+Terminal ni crear el venv a mano. Python lo instala el usuario aparte; el entorno
+(`.venv` + deps) se crea en el primer arranque (requiere internet esa vez).
+*Arquitectura:* lógica de preparación centralizada en `scripts/bootstrap_*` y
+arranque diario en `scripts/launch_*`. Los lanzadores antiguos
+(`iniciar_windows.bat`, `iniciar_mac.command`) ahora son alias que delegan en
+`scripts/launch_*` (compatibilidad con la entrega en `.zip`).
+*Cambios:*
+- **Windows:** `scripts/bootstrap_windows.ps1` (verifica Python 3.11+, crea `.venv`,
+  `pip install`, log en `salidas/install.log`), `scripts/launch_windows.bat`,
+  `installer/windows/TableroOleaje.iss` (Inno Setup 6: chequea Python en
+  `InitializeSetup`, instala en `C:\Program Files\Tablero de Oleaje`, accesos
+  directos, desinstalador), `empaquetar_instalador.bat` (compila → `dist/`).
+- **macOS:** `scripts/bootstrap_mac.sh` (Python 3.11+, `.venv` junto al código si es
+  escribible o en `~/Library/Application Support/Tablero de Oleaje/` si el `.app` es
+  de solo lectura; diálogo `osascript` si falta Python), `scripts/launch_mac.sh`,
+  bundle plantilla `installer/mac/Tablero de Oleaje.app` (`Info.plist` v1.0.0 +
+  `Contents/MacOS/launcher`), `installer/mac/empaquetar_instalador_mac.sh`
+  (arma `.app` + genera `.dmg` con `hdiutil`, sin firma → clic derecho Abrir).
+- **Guías:** `GUIAS DE USO/GUIA INSTALACION WINDOWS.txt` y `... MAC.txt`;
+  `LEEME PRIMERO.txt` ahora ofrece instalador como opción preferida.
+- **Empaquetado zip:** `empaquetar_entrega.ps1` incluye ahora `scripts/`.
+*Archivos:* `scripts/bootstrap_windows.ps1`, `scripts/launch_windows.bat`,
+`scripts/bootstrap_mac.sh`, `scripts/launch_mac.sh`, `iniciar_windows.bat`,
+`iniciar_mac.command`, `installer/windows/TableroOleaje.iss`,
+`empaquetar_instalador.bat`, `installer/mac/Tablero de Oleaje.app/Contents/Info.plist`,
+`installer/mac/Tablero de Oleaje.app/Contents/MacOS/launcher`,
+`installer/mac/empaquetar_instalador_mac.sh`,
+`GUIAS DE USO/GUIA INSTALACION WINDOWS.txt`, `GUIAS DE USO/GUIA INSTALACION MAC.txt`,
+`LEEME PRIMERO.txt`, `empaquetar_entrega.ps1`, `HANDOFF.md`,
+`docs/plans/2026-06-28-instalador-windows.md`, `docs/plans/2026-06-28-instalador-mac.md`.
+*Notas/pendientes (usuario):* compilar/probar en máquinas reales — el agente no puede
+generar `.exe`/`.dmg` ni probar SmartScreen/Gatekeeper. Falta crear el icono
+`assets/tablero.icns` (Mac) y opcional `.ico` (Win); el `.dmg` usa icono por defecto
+si no existe. Inno Setup 6 requerido en Windows para `empaquetar_instalador.bat`.
+
 ### 2026-06-28 · Espectro medido S(f) + ERA5 2D robusto (Cursor)
 *Qué/por qué:* cerrar los dos huecos de producto espectral: el panel «Espectro medido
 S(f)» era placeholder; el espectro ERA5 2D no seleccionaba el punto en la grilla ni

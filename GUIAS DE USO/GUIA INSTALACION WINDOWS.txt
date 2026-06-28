@@ -1,0 +1,89 @@
+================================================================================
+  TABLERO DE OLEAJE - GUIA DE INSTALACION (WINDOWS)
+================================================================================
+
+Esta guia explica como instalar la aplicacion con el instalador grafico
+(Setup .exe). Si en su lugar recibiste una carpeta .zip, abre el archivo
+"LEEME PRIMERO.txt".
+
+
+  REQUISITOS
+  ----------
+  - Windows 10 u 11 de 64 bits.
+  - Python 3.11 o superior, con la opcion "Add python.exe to PATH" marcada.
+  - WebView2 Runtime (viene con Windows 10/11 actualizados y con Microsoft Edge).
+  - Unos 500 MB de espacio libre.
+  - Conexion a internet la PRIMERA vez (para descargar las librerias).
+
+
+  PASO 1 - INSTALAR PYTHON (si no lo tienes)
+  ------------------------------------------
+  1. Entra a:  https://www.python.org/downloads/
+  2. Descarga Python 3.11 o superior.
+  3. IMPORTANTE: en la primera pantalla del instalador de Python, marca la
+     casilla  "Add python.exe to PATH"  antes de pulsar "Install Now".
+
+
+  PASO 2 - INSTALAR TABLERO DE OLEAJE
+  -----------------------------------
+  1. Haz doble clic en:  Tablero_Oleaje_Setup_1.0.0.exe
+  2. Acepta el aviso de Windows (ver "SmartScreen" mas abajo) y permite que
+     la aplicacion haga cambios (pide permisos de administrador).
+  3. Sigue el asistente. Se instala en:
+        C:\Program Files\Tablero de Oleaje
+  4. Al terminar, deja marcada la opcion para abrir la aplicacion, o usa el
+     acceso directo del Escritorio / menu Inicio.
+
+
+  PASO 3 - PRIMER ARRANQUE
+  ------------------------
+  La primera vez que abras la aplicacion:
+  - Se crea un entorno Python local (.venv) y se descargan las librerias.
+  - Esto puede tardar varios minutos y NECESITA internet.
+  - Las siguientes veces abre rapido y sin internet.
+
+
+  HERRAMIENTAS OPCIONALES (SWAN y ffmpeg)
+  ---------------------------------------
+  No vienen con el instalador. Solo son necesarias para modelar con SWAN
+  (ejecutable swan.exe) y para generar videos (ffmpeg). Consulta la seccion
+  correspondiente en  "GUIA DE USO WINDOWS.txt".
+
+
+  PROBLEMAS FRECUENTES
+  --------------------
+  * "Windows protegio tu PC" (SmartScreen):
+      Esta aplicacion no esta firmada digitalmente. Pulsa "Mas informacion"
+      y luego "Ejecutar de todas formas".
+
+  * "No se encontro Python":
+      Python no quedo en el PATH. Reinstala Python marcando
+      "Add python.exe to PATH", o reinicia el equipo tras instalarlo.
+
+  * El primer arranque falla al instalar librerias:
+      Revisa tu conexion a internet y el archivo  salidas\install.log
+      dentro de la carpeta de instalacion. Vuelve a abrir la aplicacion.
+
+  * La ventana no carga / queda en blanco:
+      Falta WebView2 Runtime. Descargalo de Microsoft (busca
+      "Microsoft Edge WebView2 Runtime") e instalalo.
+
+  * El cortafuegos pide permiso:
+      Es normal la primera vez (descarga de librerias / datos ERA5). Permite
+      el acceso.
+
+
+  DONDE QUEDAN TUS DATOS
+  ----------------------
+  Los resultados (graficos, videos, etc.) se guardan en la carpeta  salidas\
+  dentro de  C:\Program Files\Tablero de Oleaje.
+
+
+  DESINSTALAR
+  -----------
+  Panel de control -> Programas -> "Tablero de Oleaje" -> Desinstalar
+  (o menu Inicio -> "Desinstalar Tablero de Oleaje").
+  Se elimina la aplicacion y el entorno (.venv). Si quieres conservar tus
+  resultados, copia antes la carpeta  salidas\  a otro lugar.
+
+================================================================================

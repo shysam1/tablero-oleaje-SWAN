@@ -1,0 +1,16 @@
+#!/bin/bash
+# =============================================================================
+# Tablero de Oleaje - ejecutable del bundle .app (macOS)
+# =============================================================================
+# macOS ejecuta este archivo al abrir "Tablero de Oleaje.app". Resuelve la
+# carpeta Resources (donde vive el codigo) y delega en launch_mac.sh.
+# =============================================================================
+
+DIR="$(cd "$(dirname "$0")/../Resources" && pwd)"
+export TABLERO_APP_ROOT="$DIR"
+
+# Abrir en una ventana de Terminal para que el usuario vea el progreso del
+# primer arranque (creacion del entorno). Si falla, cae al modo directo.
+LAUNCH="$DIR/scripts/launch_mac.sh"
+
+exec /bin/bash "$LAUNCH"
