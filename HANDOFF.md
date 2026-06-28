@@ -13,6 +13,20 @@
 
 ## Registro de cambios (más reciente primero)
 
+### 2026-06-28 · Espectro medido S(f) + ERA5 2D robusto (Cursor)
+*Qué/por qué:* cerrar los dos huecos de producto espectral: el panel «Espectro medido
+S(f)» era placeholder; el espectro ERA5 2D no seleccionaba el punto en la grilla ni
+cacheaba parseado junto a la serie (carpeta `_espectro` duplicada).
+*Cambios:*
+- **`productos.py`:** producto «Espectro medido S(f)» implementado desde `Sf` o integrando
+  `Efth` sobre dirección (promedio temporal); anota Hs/Tp aproximados desde m₀.
+- **`io_era5.py`:** `_parsear_espectro_nc(lat, lon)` reduce lat/lon; `ruta_cache_espectro`
+  comparte carpeta con la serie; descarga en tramos (`chunks_espectro/`) + caché limpia
+  `era5_espectro.nc` (Efth time×freq×dir).
+- **`motor_web.py`:** descarga ERA5 ya no copia el espectro a mano (lo escribe `io_era5`).
+*Archivos:* `productos.py`, `io_era5.py`, `motor_web.py`, `test_regresion.py`, `HANDOFF.md`.
+*Notas:* +6 tests (parseo con grilla, caché compartida, tramos espectro, producto Sf/Efth).
+
 ### 2026-06-28 · Planes instalador Pro Win/Mac (Cursor)
 *Qué/por qué:* Documentados planes para instalador gráfico Windows (Inno Setup
 1.0.0) y `.dmg` macOS (sin firma, universal), con decisiones de producto

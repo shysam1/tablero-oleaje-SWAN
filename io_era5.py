@@ -684,43 +684,213 @@ def descargar_serie(lat, lon, inicio, fin, incluir_viento=False, log_fn=None):
 _VARS_ESPECTRO = ["2d_wave_spectra"]    # parámetro d2fd del CDS
 
 
-def _parsear_espectro_nc(ruta):
+def ruta_cache_espectro(lat, lon, inicio, fin):
+    """
+    Carpeta ERA5 de la serie y ruta del espectro parseado (misma carpeta).
+
+    El espectro se guarda junto a era5_serie.nc para que _cargar_para_analisis
+    lo encuentre sin duplicar carpetas _serie / _espectro.
+    """
+    carpeta, _ = ruta_cache_serie(lat, lon, inicio, fin)
+    return carpeta, carpeta / "era5_espectro.nc"
+
+
+def _espectro_cache_limpia(ruta):
+    """
+    True si el .nc ya es Efth(time, freq, dir) en un punto (sin lat/lon).
+    """
+    try:
+        if not ruta.exists() or ruta.stat().st_size == 0:
+            return False
+        with xr.open_dataset(ruta) as ds:
+            if "Efth" not in ds.data_vars:
+                return False
+            dims = set(ds["Efth"].dims)
+            espurias = dims & {"latitude", "longitude", "lat", "lon"}
+            return not espurias and {"freq", "dir"} <= dims
+    except Exception:
+        return False
+
+
+def _peticion_espectro(lat, lon, inicio, fin, delta=0.25):
+    """Petición CDS para espectro 2D direccional en un recuadro alrededor del punto."""
+    anios, meses, dias, horas = _rango_fechas(inicio, fin)
+    return {
+        "product_type": "reanalysis",
+        "variable": _VARS_ESPECTRO,
+        "year": anios, "month": meses, "day": dias, "time": horas,
+        "area": [lat + delta, lon - delta, lat - delta, lon + delta],
+        "format": "netcdf",
+    }
+
+
+def _ruta_chunk_espectro(carpeta, inicio, fin):
+    s0, s1 = validar_rango_fechas(inicio, fin)
+    d0 = str(np.datetime64(s0))[:10].replace("-", "")
+    d1 = str(np.datetime64(s1))[:10].replace("-", "")
+    return carpeta / "chunks_espectro" / f"tramo_{d0}_{d1}.nc"
+
+
+def _parsear_espectro_nc(ruta, lat=None, lon=None, inicio=None, fin=None):
     """
     .nc de ERA5 2D spectra → Dataset con Efth(time, freq, dir), des-logueado.
 
     ERA5 guarda d2fd como log10 de la densidad; aquí se reconstruye 10**d2fd y se
     renombran las dimensiones a (freq, dir) para igualar a leer_espectro_temporal.
+    Si el archivo trae lat/lon (descarga en área), selecciona el punto más cercano.
     Maneja tanto el .nc plano (CDS antiguo) como el .zip por stream (CDS nuevo).
     """
     datasets = _abrir_descarga_cds(ruta)
-    bruto = next((d for d in datasets if "d2fd" in d.data_vars), datasets[0])
+    bruto = next((d for d in datasets if "d2fd" in d.data_vars), None)
+    if bruto is None:
+        raise ValueError("La descarga ERA5 no incluye espectro 2D (d2fd).")
+    if lat is not None and lon is not None:
+        lat, lon = validar_coord_era5(lat, lon)
+        if "latitude" in bruto.dims and "longitude" in bruto.dims:
+            lon_sel = _longitud_para_grilla(lon, bruto["longitude"].values)
+            bruto = bruto.sel(latitude=lat, longitude=lon_sel, method="nearest")
+        bruto = bruto.drop_vars(_COORDS_EXTRA, errors="ignore")
     if "valid_time" in bruto.variables:
         bruto = bruto.rename({"valid_time": "time"})
     d2fd = bruto["d2fd"]
-    efth = np.power(10.0, d2fd)                       # des-logueo; NaN se propaga
-    efth = efth.rename({"frequency": "freq", "direction": "dir"})
+    efth = np.power(10.0, np.asarray(d2fd, float))    # des-logueo; NaN se propaga
+    efth = xr.DataArray(
+        efth,
+        dims=d2fd.dims,
+        coords={k: d2fd.coords[k] for k in d2fd.dims},
+    )
+    renombres = {}
+    if "frequency" in efth.dims:
+        renombres["frequency"] = "freq"
+    if "direction" in efth.dims:
+        renombres["direction"] = "dir"
+    if renombres:
+        efth = efth.rename(renombres)
 
     ds = xr.Dataset({"Efth": efth})
     ds["Efth"].attrs = {"long_name": "Densidad de energía", "units": "m2/Hz/deg"}
-    ds["freq"].attrs = {"long_name": "Frecuencia", "units": "Hz"}
-    ds["dir"].attrs = {"long_name": "Dirección", "units": "deg"}
+    if "freq" in ds.coords:
+        ds["freq"].attrs = {"long_name": "Frecuencia", "units": "Hz"}
+    if "dir" in ds.coords:
+        ds["dir"].attrs = {"long_name": "Dirección", "units": "deg"}
+    if lat is not None and lon is not None:
+        ds.attrs["fuente"] = f"ERA5 espectro ({lat:.3f}, {lon:.3f})"
+        if inicio is not None and fin is not None:
+            s0, s1 = validar_rango_fechas(inicio, fin)
+            ds.attrs["periodo"] = f"{s0} — {s1}"
     return ds
+
+
+def _obtener_tramo_espectro(lat, lon, inicio, fin, carpeta, log_fn=None):
+    """Descarga o reutiliza un tramo corto de espectro ERA5 parseado en un punto."""
+    chunk = _ruta_chunk_espectro(carpeta, inicio, fin)
+    if _espectro_cache_limpia(chunk):
+        if log_fn:
+            log_fn(f"  Tramo espectro {inicio} → {fin}: caché local.")
+        with xr.open_dataset(chunk) as raw:
+            return raw.load()
+
+    crudo = chunk.with_name(chunk.stem + "_cruda.nc")
+    chunk.parent.mkdir(parents=True, exist_ok=True)
+    try:
+        try:
+            _retrieve_atomico(
+                _DATASET_ESPECTRO,
+                _peticion_espectro(lat, lon, inicio, fin),
+                crudo, log_fn=log_fn)
+        except Exception as exc:
+            if (_es_error_tamaño_cds(exc)
+                    and _dias_rango(inicio, fin) > _MIN_DIAS_SUBDIVISION):
+                mitad = max(_MIN_DIAS_SUBDIVISION, _dias_rango(inicio, fin) // 2)
+                sub = _particiones_por_dias(inicio, fin, max_dias=mitad)
+                if len(sub) > 1:
+                    if log_fn:
+                        log_fn(f"  CDS rechazó el tramo de espectro; "
+                               f"subdividiendo en {len(sub)} partes…")
+                    return _concatenar_series([
+                        _obtener_tramo_espectro(lat, lon, a, b, carpeta, log_fn)
+                        for a, b in sub
+                    ])
+            raise
+        if log_fn:
+            log_fn("  Procesando espectro del tramo…")
+        ds = _parsear_espectro_nc(crudo, lat, lon, inicio, fin)
+        _escribir_nc_atomico(ds, chunk)
+        return ds
+    finally:
+        if crudo.exists():
+            crudo.unlink()
+
+
+def _descargar_tramos_espectro(lat, lon, tramos, carpeta, log_fn=None):
+    """Descarga tramos de espectro ERA5 (hasta 2 en paralelo)."""
+    n = len(tramos)
+    if n == 0:
+        raise ValueError("No hay tramos de espectro para descargar.")
+    if n == 1:
+        t0, t1 = tramos[0]
+        if log_fn:
+            log_fn(f"Tramo espectro 1/1: {t0} → {t1}")
+        return [_obtener_tramo_espectro(lat, lon, t0, t1, carpeta, log_fn)]
+
+    lock = threading.Lock()
+    log_seguro = _log_con_rebloqueo(log_fn, lock)
+    if log_fn:
+        log_fn(f"Descargando hasta {_MAX_TRAMOS_PARALELO} tramos de espectro en paralelo…")
+
+    partes = [None] * n
+
+    def _tarea(idx, t0, t1):
+        if log_seguro:
+            log_seguro(f"Tramo espectro {idx + 1}/{n}: {t0} → {t1}")
+        return _obtener_tramo_espectro(lat, lon, t0, t1, carpeta, log_seguro)
+
+    with ThreadPoolExecutor(max_workers=_MAX_TRAMOS_PARALELO) as pool:
+        fut_a_idx = {
+            pool.submit(_tarea, idx, t0, t1): idx
+            for idx, (t0, t1) in enumerate(tramos)
+        }
+        for fut in as_completed(fut_a_idx):
+            partes[fut_a_idx[fut]] = fut.result()
+    return partes
 
 
 def descargar_espectro(lat, lon, inicio, fin, log_fn=None):
     """
-    Descarga el espectro 2D direccional ERA5 para un punto y rango, lo cachea como
-    .nc en salidas/ y devuelve un Dataset con Efth(time, freq, dir) listo para la
-    partición.
+    Descarga el espectro 2D direccional ERA5 para un punto y rango, lo cachea ya
+    parseado como era5_espectro.nc (Efth time×freq×dir) junto a la serie ERA5 y
+    devuelve ese Dataset listo para partición y tablero.
     """
     lat, lon = validar_coord_era5(lat, lon)
-    carpeta = rutas.carpeta_salida(_nombre_fuente(lat, lon, "espectro", inicio, fin))
-    destino = carpeta / "era5_espectro.nc"
-    if not _cache_utilizable(destino):
-        anios, meses, dias, horas = _rango_fechas(inicio, fin)
-        peticion = {"product_type": "reanalysis", "variable": _VARS_ESPECTRO,
-                    "year": anios, "month": meses, "day": dias, "time": horas,
-                    "area": [lat + 0.25, lon - 0.25, lat - 0.25, lon + 0.25],
-                    "format": "netcdf"}
-        _retrieve_atomico(_DATASET_ESPECTRO, peticion, destino, log_fn=log_fn)
-    return _parsear_espectro_nc(destino)
+    carpeta, destino = ruta_cache_espectro(lat, lon, inicio, fin)
+    if _espectro_cache_limpia(destino):
+        if log_fn:
+            log_fn(f"Usando caché de espectro: {destino}")
+        return xr.open_dataset(destino)
+
+    # Caché antigua: .nc crudo del CDS sin parsear en la ruta final.
+    if destino.exists() and not (carpeta / "chunks_espectro").is_dir():
+        try:
+            if log_fn:
+                log_fn("Parseando espectro crudo en caché…")
+            ds = _parsear_espectro_nc(destino, lat, lon, inicio, fin)
+            if "Efth" in ds.data_vars and "latitude" not in ds["Efth"].dims:
+                _escribir_nc_atomico(ds, destino)
+                if log_fn:
+                    log_fn("Caché de espectro convertida a formato limpio.")
+                return ds
+        except Exception:
+            pass
+
+    tramos = _particiones_descarga(inicio, fin)
+    nd = _dias_rango(inicio, fin)
+    if len(tramos) > 1 and log_fn:
+        log_fn(f"Espectro: periodo de {nd} días → {len(tramos)} peticiones al CDS "
+               f"(máx. {_MAX_DIAS_UNA_PETICION} días por petición).")
+
+    partes = _descargar_tramos_espectro(lat, lon, tramos, carpeta, log_fn)
+    ds = _concatenar_series(partes)
+    _escribir_nc_atomico(ds, destino)
+    if log_fn:
+        log_fn(f"Espectro completo: {int(ds.sizes.get('time', 0))} pasos → {destino.name}.")
+    return ds
