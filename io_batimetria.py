@@ -62,6 +62,33 @@ def _normalizar_raster(ds):
     return ds[["elevation"]].sortby("lat").sortby("lon")
 
 
+def nodos_esperados_bot(malla):
+    """Número de valores que debe tener un .bot para la malla (esquinas de celda)."""
+    mxc, myc = int(malla["mxc"]), int(malla["myc"])
+    nx, ny = mxc + 1, myc + 1
+    return nx * ny, nx, ny, mxc, myc
+
+
+def leer_bot_como_grilla(ruta_bot, malla):
+    """
+    Lee un .bot y lo devuelve como grilla de profundidad (ny, nx), ny=myc+1.
+
+    Lanza ValueError si el conteo de valores no coincide con la malla.
+    """
+    mxc, myc = int(malla["mxc"]), int(malla["myc"])
+    nx, ny = mxc + 1, myc + 1
+    esperado = nx * ny
+    vals = np.array(
+        [float(l) for l in Path(ruta_bot).read_text().split() if l.strip()],
+        dtype=float,
+    )
+    if vals.size != esperado:
+        raise ValueError(
+            f"El .bot tiene {vals.size} valores; la malla {mxc}×{myc} celdas "
+            f"requiere {esperado} ({ny}×{nx} nodos).")
+    return np.flipud(vals.reshape(ny, nx))
+
+
 def generar_bot(malla, zona_utm, carpeta, raster=None, nombre="bati.bot", margen=0.05):
     """
     Escribe el .bot de la malla (UTM) muestreando un raster de batimetría.
@@ -74,6 +101,10 @@ def generar_bot(malla, zona_utm, carpeta, raster=None, nombre="bati.bot", margen
     from scipy.interpolate import RegularGridInterpolator
 
     mxc, myc = int(malla["mxc"]), int(malla["myc"])
+    if mxc <= 0 or myc <= 0:
+        raise ValueError("mxc y myc deben ser > 0.")
+    if float(malla["xlenc"]) <= 0 or float(malla["ylenc"]) <= 0:
+        raise ValueError("xlenc y ylenc deben ser > 0.")
     nx, ny = mxc + 1, myc + 1
     dx = float(malla["xlenc"]) / mxc
     dy = float(malla["ylenc"]) / myc
@@ -106,7 +137,13 @@ def generar_bot(malla, zona_utm, carpeta, raster=None, nombre="bati.bot", margen
 
     bat = np.flipud(depth).ravel()                      # convención inversa de io_swan
     carpeta.mkdir(parents=True, exist_ok=True)
-    ruta = carpeta / nombre
+    import seguridad
+    nombre_seguro = seguridad.sanitizar_segmento(nombre, "nombre del .bot")
+    ruta = carpeta / nombre_seguro
+    if np.any(np.isnan(bat)):
+        raise ValueError(
+            "La batimetría contiene nodos sin dato (NaN). Reduce el dominio o "
+            "usa un raster que cubra toda la malla.")
     ruta.write_text("\n".join(f"{v:.2f}" for v in bat))
 
     meta = {"n_nodos": int(bat.size),
@@ -171,9 +208,11 @@ def descargar_raster(lat_min, lat_max, lon_min, lon_max, destino):
             f"(content-type {tipo!r}). Usa un archivo de batimetría local. "
             f"Detalle: {muestra}")
     destino.write_bytes(cuerpo)
-    return _normalizar_raster(xr.open_dataset(destino))
+    with xr.open_dataset(destino) as raw:
+        return _normalizar_raster(raw.load())
 
 
 def leer_raster_local(ruta):
     """Abre un raster de batimetría propio (.nc) y lo devuelve normalizado."""
-    return _normalizar_raster(xr.open_dataset(ruta))
+    with xr.open_dataset(ruta) as raw:
+        return _normalizar_raster(raw.load())

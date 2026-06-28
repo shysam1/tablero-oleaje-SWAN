@@ -7,11 +7,25 @@ de ingeniería (xarray + NetCDF, propagación de oleaje costero).
 
 ## Uso rápido
 
-Doble clic en `Tablero de Oleaje.lnk` (o `Crear Tablero.bat`), o desde consola:
+Doble clic en **`iniciar_windows.bat`** o en **`Tablero de Oleaje.lnk`**
+(regenerar con `Crear Tablero.bat`), o desde consola:
 
 ```powershell
-python app_tablero.py
+.\iniciar_windows.bat
 ```
+
+La interfaz es **solo web** (pywebview + WebView2) en `ui/`. No uses
+`app_tablero.py`: si lo ejecutas, redirige a la web.
+
+El lanzador crea `.venv` e instala `requirements.txt` automáticamente la primera vez.
+
+**Windows:** lee `GUIAS DE USO\GUIA DE USO WINDOWS.txt` si falta Python, WebView2 o alguna librería.
+
+**macOS:** lee `GUIAS DE USO\GUIA DE USO MAC.txt` y haz doble clic en `iniciar_mac.command`.
+
+**Entregar a otra persona:** doble clic en `empaquetar_entrega.bat` → se crea un `.zip` en `dist\`.
+
+Atajos en la UI web: **Enter** = Siguiente, **Esc** = Atrás, **Ctrl+L** = limpiar log.
 
 ## Modo guiado
 
@@ -84,9 +98,9 @@ Todas las salidas van a `salidas\<fuente>\`, una subcarpeta por archivo o corrid
 
 | Archivo | Rol |
 |---|---|
-| `app_tablero.py` | Ventana principal: contenedor de vistas (inicio guiado, los 3 caminos, modo avanzado). |
-| `asistente.py` | Mini-framework de wizard: `MaquinaWizard` (navegación pura, testeable) + `Paso`/`Wizard` (UI con barra de pasos, log/progreso y tareas en hilo). |
-| `pasos_analizar.py` · `pasos_modelar.py` · `pasos_ver.py` | Pasos de cada camino guiado; reutilizan el motor sin reescribirlo. |
+| `app_web.py` + `ui/` | **Interfaz principal** (pywebview): tres caminos guiados + modo avanzado. |
+| `api_web.py` · `motor_web.py` | Puente JS ↔ motor Python (sin tkinter). |
+| `app_tablero.py` · `asistente.py` · `pasos_*.py` · `gui_swan.py` | **Obsoletos** (tkinter); conservados para tests. `app_tablero.py` redirige a web si se ejecuta. |
 | `io_oleaje.py` · `validacion.py` · `productos.py` · `tablero_oleaje.py` | Serie temporal en un punto → tablero de curvas. |
 | `io_swan.py` · `productos_swan.py` · `tablero_swan.py` | Campos SWAN estacionarios → tablero de mapas. |
 | `io_swan_nonst.py` · `video_swan.py` | Campos SWAN no estacionarios → videos (+ espectro). |
@@ -95,7 +109,7 @@ Todas las salidas van a `salidas\<fuente>\`, una subcarpeta por archivo o corrid
 | `borde_oleaje.py` | Deriva la condición de borde SWAN (Hs/Tp/Dir) de una serie: periodo de retorno (Gumbel), máximo observado o reinante. |
 | `io_batimetria.py` | Genera el `.bot` de la malla: descarga batimetría (GEBCO/ETOPO) por coordenadas o usa un raster local, proyecta a UTM e interpola. |
 | `geo_malla.py` | Define la malla por lat/lon (centro + tamaño + celda) y calcula sola la zona UTM y los campos UTM. |
-| `swan_runner.py` · `swan_builder.py` · `gui_swan.py` | Correr SWAN y armar el `.swn`. |
+| `swan_runner.py` · `swan_builder.py` | Correr SWAN y armar el `.swn`. |
 | `rutas.py` · `config.py` | Carpeta de salidas · preferencias entre sesiones. |
 | `test_regresion.py` · `test_asistente.py` · `test_nesting.py` | Red de seguridad: valores conocidos del motor · navegación del wizard y composición de los caminos · motor de nesting (builder, validación y orden de corrida). |
 
@@ -120,19 +134,23 @@ Para *Procesar SWAN*, SWAN instalado y `swanrun` en el PATH.
 
 ### Credenciales ERA5 (descarga por coordenada)
 
-La descarga usa el Copernicus Climate Data Store. Una sola vez:
+La descarga usa el Copernicus Climate Data Store. **Cada usuario debe usar su
+propia cuenta** (gratis):
 
-1. Crea una cuenta gratis en <https://cds.climate.copernicus.eu> y acepta los
-   términos del dataset ERA5.
-2. Crea el archivo `~/.cdsapirc` (en Windows, `C:\Users\<tu-usuario>\.cdsapirc`) con:
+1. Crea una cuenta en <https://cds.climate.copernicus.eu> y acepta los términos
+   del dataset ERA5.
+2. En la app web: barra lateral → **Credenciales ERA5** → pega tu `UID:API-KEY`,
+   guarda y opcionalmente prueba la conexión.
+
+Alternativa manual: archivo `~/.cdsapirc` (en Windows,
+`C:\Users\<tu-usuario>\.cdsapirc`):
 
    ```
    url: https://cds.climate.copernicus.eu/api
    key: <UID>:<API-KEY>
    ```
 
-Sin ese archivo, el botón "Descargar ERA5…" avisa con el paso a paso y no
-descarga nada.
+Sin credenciales válidas, el botón "Descargar ERA5…" avisa y no intenta descargar.
 
 ## Tests
 

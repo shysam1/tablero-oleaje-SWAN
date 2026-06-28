@@ -138,6 +138,24 @@ def test_paso_nido_activo_agrega_dominio_sin_espectro():
         assert ctx["dominios"][1]["malla"] is paso.malla
         assert ctx["dominios"][1]["bot"] == "/ruta/ficticia/bati_nido.bot"
         assert "punto_espectral" not in ctx["dominios"][1]
+        # Segunda pasada: upsert, no duplicar
+        paso.recoger(ctx)
+        assert len(ctx["dominios"]) == 2
+    finally:
+        root.destroy()
+
+
+def test_paso_nido_desactivado_elimina_dominio_previo():
+    import pasos_modelar
+    import tkinter as tk
+    root = tk.Tk(); root.withdraw()
+    try:
+        paso = pasos_modelar.PasoNido(root)
+        ctx = {"dominios": [{"malla": {}}, {"malla": {"xpc": 9}, "bot": "x.bot"}]}
+        paso.entrar(ctx)
+        paso.activo.set(False)
+        paso.recoger(ctx)
+        assert len(ctx["dominios"]) == 1
     finally:
         root.destroy()
 

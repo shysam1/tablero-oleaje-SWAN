@@ -17,13 +17,16 @@
         <div class="sidebar-section">Inicio</div>
         <button type="button" class="nav-item active" data-nav="inicio">¿Qué quieres hacer?</button>
         <button type="button" class="nav-item" data-nav="avanzado">Modo avanzado</button>
+        <div class="sidebar-section">Ajustes</div>
+        <button type="button" class="nav-item" data-nav="credenciales">Credenciales ERA5</button>
+        <button type="button" class="nav-item" data-nav="cache">Caché ERA5</button>
+        <button type="button" class="nav-item" data-nav="acerca">Acerca de</button>
       </aside>
 
       <main class="main" id="main"></main>
     </div>
   </div>
 
-  <!-- Modal condición de borde -->
   <dialog id="dlg-borde" class="modal">
     <form method="dialog" class="modal-box">
       <h3>Condición de borde</h3>
@@ -40,7 +43,6 @@
     </form>
   </dialog>
 
-  <!-- Modal confirmación SWAN -->
   <dialog id="dlg-confirm" class="modal">
     <form method="dialog" class="modal-box">
       <h3>Advertencias</h3>
@@ -52,6 +54,12 @@
     </form>
   </dialog>
 
+  <script src="js/core.js"></script>
+  <script src="js/feedback.js"></script>
+  <script src="js/wizard-analizar.js"></script>
+  <script src="js/wizard-modelar.js"></script>
+  <script src="js/wizard-ver.js"></script>
+  <script src="js/views.js"></script>
   <script src="app.js"></script>
 </body>
 </html>

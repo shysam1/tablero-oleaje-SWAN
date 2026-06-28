@@ -7,9 +7,12 @@ Tolerante a fallos: si el archivo no existe o está corrupto, devuelve vacío.
 """
 
 import json
+import threading
+import warnings
 from pathlib import Path
 
 _RUTA = Path(__file__).parent / "config.json"
+_lock = threading.Lock()
 
 
 def cargar():
@@ -25,11 +28,15 @@ def obtener(clave, defecto=None):
 
 
 def guardar(clave, valor):
-    """Fija una clave y persiste. Silencioso si no se puede escribir."""
-    datos = cargar()
-    datos[clave] = valor
-    try:
-        _RUTA.write_text(json.dumps(datos, indent=2, ensure_ascii=False),
-                         encoding="utf-8")
-    except Exception:
-        pass
+    """Fija una clave y persiste de forma atómica. Silencioso si no se puede escribir."""
+    import tempfile
+    with _lock:
+        datos = cargar()
+        datos[clave] = valor
+        try:
+            tmp = _RUTA.with_name(_RUTA.name + ".part")
+            tmp.write_text(json.dumps(datos, indent=2, ensure_ascii=False),
+                           encoding="utf-8")
+            tmp.replace(_RUTA)
+        except Exception as exc:
+            warnings.warn(f"No se pudo guardar config.json: {exc}", stacklevel=2)

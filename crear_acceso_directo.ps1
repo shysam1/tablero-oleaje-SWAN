@@ -3,31 +3,19 @@ $ErrorActionPreference = "Stop"
 
 $proyecto = Split-Path -Parent $MyInvocation.MyCommand.Path
 $lnk = Join-Path $proyecto "Tablero de Oleaje.lnk"
-$app = Join-Path $proyecto "app_web.py"
+$launcher = Join-Path $proyecto "iniciar_windows.bat"
 
-if (-not (Test-Path $app)) {
-  Write-Error "No se encontró la UI web: $app"
-}
-
-$python = $null
-foreach ($candidato in @(
-  (Get-Command python -ErrorAction SilentlyContinue | Select-Object -ExpandProperty Source),
-  "C:\Users\123ja\AppData\Local\Programs\Python\Python313\python.exe"
-)) {
-  if ($candidato -and (Test-Path $candidato)) { $python = $candidato; break }
-}
-if (-not $python) {
-  Write-Error "No se encontró python.exe"
+if (-not (Test-Path $launcher)) {
+  Write-Error "No se encontró el lanzador: $launcher"
 }
 
 $wsh = New-Object -ComObject WScript.Shell
 $sc = $wsh.CreateShortcut($lnk)
-$sc.TargetPath = $python
-$sc.Arguments = "`"$app`" --gui"
+$sc.TargetPath = $launcher
 $sc.WorkingDirectory = $proyecto
 $sc.WindowStyle = 1
 $sc.Description = "Tablero de Oleaje (UI web)"
-$sc.IconLocation = "$python,0"
+$sc.IconLocation = "$env:SystemRoot\System32\imageres.dll,109"
 $sc.Save()
 
 $escritorio = [Environment]::GetFolderPath("Desktop")
@@ -39,3 +27,4 @@ if (Test-Path $lnkEscritorio) {
 
 Write-Host "Acceso directo creado:"
 Write-Host "  $lnk"
+Write-Host "Apunta a: iniciar_windows.bat (venv + dependencias automaticas)"

@@ -165,8 +165,12 @@ def leer_espectro_temporal(ruta):
     while i < len(lineas):
         clave = lineas[i].split()[0] if lineas[i].split() else ""
         if clave in ("AFREQ", "RFREQ"):
+            if i + 1 >= len(lineas):
+                raise ValueError(f"{ruta.name}: encabezado {clave} incompleto.")
             freqs, i = _vals(i + 2, int(lineas[i + 1].split()[0]))
         elif clave in ("CDIR", "NDIR"):
+            if i + 1 >= len(lineas):
+                raise ValueError(f"{ruta.name}: encabezado {clave} incompleto.")
             dirs, i = _vals(i + 2, int(lineas[i + 1].split()[0]))
         elif "exception value" in lineas[i]:
             excepcion = float(lineas[i].split()[0])
@@ -217,6 +221,8 @@ def leer_espectro_temporal(ruta):
             cubos.append(np.full((nf, nd), np.nan))
             i += 2
 
+    if not cubos:
+        raise ValueError(f"{ruta.name}: no contiene bloques temporales de espectro.")
     ds = xr.Dataset(
         {"Efth": (("time", "freq", "dir"), np.stack(cubos))},
         coords={"time": np.array(tiempos, dtype="datetime64[ns]"),
@@ -390,7 +396,8 @@ def cargar_corrida_nonst(carpeta, utm_large=UTM_LARGE_DEFAULT, titulos=None):
     """
     carpeta = Path(carpeta)
     cfgs = _detectar_dominios(carpeta, utm_large, titulos or {})
-    dominios = {nombre: _construir_dataset(cfg) for nombre, cfg in cfgs.items()}
+    dominios = {nombre: _construir_dataset(cfg)
+                for nombre, cfg in cfgs.items() if cfg.get("campos")}
 
     meta = {"condicion": carpeta.name}
     for ds in dominios.values():

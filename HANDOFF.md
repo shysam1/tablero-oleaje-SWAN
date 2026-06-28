@@ -13,6 +13,244 @@
 
 ## Registro de cambios (más reciente primero)
 
+### 2026-06-27 · Revisión final pre-entrega (Cursor)
+*Qué/por qué:* auditoría completa Windows + macOS antes de envío: suite de tests
+(147 passed), imports/smoke, zip de entrega regenerado, guías alineadas con
+carpeta `GUIAS DE USO/`, lanzador Mac con manejo de errores (pip/app + log),
+`pytest` fuera de `requirements.txt` (solo desarrollo).
+*Archivos:* `iniciar_mac.command`, `GUIAS DE USO/*.txt`, `requirements.txt`,
+`dist/Tablero_Oleaje_entrega_2026-06-27.zip`, `HANDOFF.md`.
+*Notas:* tests dev: `pip install pytest` + `pytest test_regresion.py test_asistente.py test_motor_web.py test_nesting.py -q`.
+
+### 2026-06-27 · Empaquetado para entrega (Cursor)
+*Qué/por qué:* script `empaquetar_entrega.bat` / `.ps1` genera zip limpio en `dist/`
+(sin .venv, salidas, tests, docs dev, config local) + `LEEME PRIMERO.txt` para el
+receptor. Guías en `GUIAS DE USO/`.
+*Archivos:* `empaquetar_entrega.bat`, `empaquetar_entrega.ps1`, `LEEME PRIMERO.txt`,
+`.gitignore`, `README.md`, `iniciar_windows.bat`, `requirements.txt`, `HANDOFF.md`.
+
+### 2026-06-27 · Guía y lanzador Windows (Cursor)
+*Qué/por qué:* paridad con Mac: `iniciar_windows.bat` (venv + pip + app),
+`GUIA DE USO WINDOWS.txt` para usuario final; `.lnk` apunta al .bat (sin ruta
+hardcodeada de Python del desarrollador).
+*Archivos:* `iniciar_windows.bat`, `GUIA DE USO WINDOWS.txt`, `crear_acceso_directo.ps1`,
+`README.md`, `requirements.txt`, `HANDOFF.md`.
+
+### 2026-06-27 · Guía Mac en texto plano (Cursor)
+*Qué/por qué:* renombrar documentación Mac a `GUIA DE USO MAC.txt` (texto plano,
+orientada al usuario final, sin markdown).
+*Archivos:* `GUIA DE USO MAC.txt` (nuevo), eliminado `README_MAC.md`, `README.md`,
+`requirements.txt`, `HANDOFF.md`.
+
+### 2026-06-27 · Entrega macOS: compatibilidad y lanzador (Cursor)
+*Qué/por qué:* preparar entrega al cliente Mac (Intel + Apple Silicon): rutas
+multiplataforma, apertura de archivos sin `os.startfile`, backend pywebview Cocoa,
+`requirements.txt` completo, `iniciar_mac.command` y `GUIA DE USO MAC.txt`.
+*Archivos:* `sistema.py` (nuevo), `app_web.py`, `api_web.py`, `motor_web.py`,
+`pasos_analizar.py`, `pasos_modelar.py`, `pasos_ver.py`, `gui_swan.py`,
+`app_tablero.py`, `rutas.py`, `requirements.txt`, `iniciar_mac.command` (nuevo),
+`GUIA DE USO MAC.txt` (nuevo), `HANDOFF.md`.
+*Notas:* entrada principal `app_web.py --gui`; en Mac ejecutar `chmod +x iniciar_mac.command`
+la primera vez; SWAN/ffmpeg siguen siendo opcionales del sistema.
+
+### 2026-06-27 · Inicio: tarjeta «Procesar SWAN» (Cursor)
+*Qué/por qué:* el panel para correr un caso SWAN existente solo estaba en Modo avanzado;
+ahora hay una 4.ª tarjeta en la página principal que abre la misma vista (carpeta → correr).
+*Archivos:* `ui/js/views.js`, `ui/js/core.js`, `ui/styles.css`, `HANDOFF.md`.
+
+### 2026-06-27 · Validación .bot vs malla en paso Batimetría (Cursor)
+*Qué/por qué:* al elegir un `.bot` propio, la app valida de inmediato el conteo de nodos
+`(myc+1)×(mxc+1)`, muestra el número esperado, bloquea «Siguiente» si no cuadra, y corrige
+el preview (antes usaba `mxc×myc`). Al recalcular malla se invalida la batimetría previa.
+*Archivos:* `io_batimetria.py`, `previews.py`, `motor_web.py`, `api_web.py`,
+`ui/js/wizard-modelar.js`, `test_regresion.py`, `HANDOFF.md`.
+*Notas:* endpoint `validar_bot_malla`; +3 tests regresión.
+
+### 2026-06-27 · Borde SWAN: derivación automática desde ERA5 (Cursor)
+*Qué/por qué:* en Modelar, el paso Borde rellena Hs/Tp/Dir solo si hay ERA5 en caché
+(centro de la malla + rango de prefs); botón descarga+deriva si falta; archivo manual opcional.
+*Archivos:* `motor_web.py`, `api_web.py`, `ui/js/wizard-modelar.js`, `ui/js/core.js`, `HANDOFF.md`.
+
+### 2026-06-27 · UI solo web: tkinter obsoleto (Cursor)
+*Qué/por qué:* el usuario usa exclusivamente la interfaz web; tkinter queda retirada
+del flujo de uso. `app_tablero.py` redirige a `app_web.py --gui` si alguien lo ejecuta.
+*Archivos:* `app_tablero.py`, `README.md`, `CLAUDE.md`, `HANDOFF.md`.
+*Notas:* no borrar `pasos_*` / `gui_swan` aún (tests); no añadir features en tkinter.
+
+### 2026-06-27 · Implementación informe QA (P0–P2) (Cursor)
+*Qué/por qué:* correcciones del informe QA: seguridad CDS, bordes NaN/Gumbel, caché ERA5,
+nido/batimetría, confinamiento API, límites de malla, productos SWAN y robustez general.
+*Cambios principales:*
+- **`seguridad.py`:** `validar_url_cds`, `es_finito_positivo/en_rango`; fix `sanitizar_nombre_fuente`.
+- **`io_era5.py`:** caché 4 decimales, normalización longitud, `validar_coord_era5`.
+- **`borde_oleaje.py` / `swan_builder.py` / `pasos_modelar.py`:** rechazo no finitos; Gumbel validado.
+- **`motor_web.py` / `pasos_modelar.py`:** `.bot` únicos (`bati_grande.bot` / `bati_nido.bot`); path resuelto tablero.
+- **`api_web.py`:** `ruta_existe` confinado, lock SWAN, errores sanitizados.
+- **`geo_malla.py`:** tope celdas/nodos; **`productos_swan.py`**, **`video_swan.py`**, **`swan_runner.py`**, etc.
+*Archivos:* `seguridad.py`, `io_era5.py`, `borde_oleaje.py`, `swan_builder.py`, `motor_web.py`,
+`pasos_modelar.py`, `api_web.py`, `geo_malla.py`, `productos_swan.py`, `video_swan.py`,
+`swan_runner.py`, `validacion.py`, `io_oleaje.py`, `io_swan_nonst.py`, `config.py`, `app_web.py`,
+`test_regresion.py`, `test_asistente.py`, `HANDOFF.md`.
+*Notas:* +9 tests regresión, +2 asistente; correr suite completa tras pull.
+
+### 2026-06-27 · Wizard Modelar: batimetría clara, plantillas, nido, checklist (Cursor)
+*Qué/por qué:* el paso batimetría era opaco («descargar» vs generar .bot desde ETOPO).
+Reorden pasos: malla → nido → batimetría → borde → correr. UI con plantillas (Coronel,
+Reñaca, Golfo), carpeta del caso en malla, tabs grande/nido, resumen semáforo post-.bot,
+raster .nc local, diagrama de borde, preview anidamiento, checklist pre-SWAN, logs .prt.
+*Archivos:* `motor_web.py`, `api_web.py`, `previews.py`, `ui/js/wizard-modelar.js`,
+`ui/js/core.js`, `ui/styles.css`, `test_regresion.py`, `HANDOFF.md`.
+
+### 2026-06-27 · Mejoras UX/UI masivas (web): previews, ERA5 espectro, caché, SWAN web (Cursor)
+*Qué/por qué:* implementación del paquete de mejoras acordado (excepto modo oscuro,
+animaciones entre pasos e export informe): espectro ERA5 + partición en UI, vista previa
+in-app, mapas malla/batimetría, Procesar SWAN en web (sin tk), gestión caché ERA5,
+inicio enriquecido, semáforo revisión, comparación vs referencia, footnotes en tablero PNG,
+persistencia prefs/sesión, atajos teclado, Acerca de, `requirements.txt`, tests motor web,
+`ui/` modularizado en `js/`.
+*Archivos:* `previews.py`, `motor_web.py`, `api_web.py`, `tablero_oleaje.py`,
+`ui/index.html`, `ui/styles.css`, `ui/js/*.js`, `ui/app.js`, `requirements.txt`,
+`test_regresion.py`, `test_motor_web.py`, `README.md`, `HANDOFF.md`.
+*Notas:* multipanel video ya existía (`video_swan.multipanel=True`); la UI lo menciona.
+Legacy `gui_swan` sigue en repo pero ya no se invoca desde avanzado.
+
+### 2026-06-27 · Ver corrida SWAN: UTM auto desde carpeta (Cursor)
+*Qué/por qué:* en «Ver corrida», UTM X/Y ya no son siempre los defaults de Coronel;
+se infieren al cargar la carpeta (tablero_swan.json → CGRID UTM → default).
+*Cambios:*
+- **`io_swan.py`:** `guardar_meta_caso`, `inferir_utm_desde_carpeta`, `tablero_swan.json`.
+- **`motor_web.py` / `pasos_modelar.py`:** guardan meta al escribir el caso.
+- **`info_carpeta_swan`:** devuelve utm_x, utm_y, origen, mensaje.
+- **`ui/app.js` / `pasos_ver.py`:** rellenan campos y muestran de dónde salió el offset.
+*Archivos:* `io_swan.py`, `motor_web.py`, `pasos_modelar.py`, `pasos_ver.py`,
+`ui/app.js`, `test_regresion.py`, `HANDOFF.md`.
+*Notas:* casos viejos CGRID (0,0) siguen con default Coronel (editable); +3 tests.
+
+### 2026-06-27 · Tablero: paneles multi-anuales exigen span ≥ 730 d (Cursor)
+*Qué/por qué:* con ~1 año ERA5 (jul-2024→jul-2025) aparecían régimen extremo, Gumbel
+y climatología con 2 máximos anuales parciales (feo e inestable). Ahora se exige
+span ≥ 730 d **y** ≥ 2 años calendario (`datos_suficientes_multi_anual`); mismo
+criterio en `borde_oleaje` modo retorno.
+*Archivos:* `productos.py`, `borde_oleaje.py`, `test_regresion.py`, `HANDOFF.md`.
+*Notas:* +2 tests (caso ERA5 1 año / 2 años completos); regenerar tablero tras el cambio.
+
+### 2026-06-27 · ERA5 origen: sin botón credenciales inline (Cursor)
+*Qué/por qué:* el paso «Descargar de ERA5» ya no muestra botón «Credenciales CDS…»;
+si faltan credenciales, la barra de estado muestra «Error: Faltan credenciales ERA5».
+La configuración sigue en la barra lateral → Credenciales ERA5.
+*Archivos:* `ui/app.js`, `api_web.py`, `HANDOFF.md`.
+
+### 2026-06-27 · UI: pantalla Credenciales ERA5 (Copernicus CDS) (Cursor)
+*Qué/por qué:* cada usuario debe configurar su propia cuenta CDS sin editar
+archivos a mano ni reutilizar la API key de otra persona.
+*Cambios:*
+- **`io_era5.py`:** `estado_credenciales_cds`, `guardar_credenciales_cds`,
+  `probar_credenciales_cds` (GET /v2/tasks); clave enmascarada en la UI.
+- **`api_web.py`:** endpoints `estado_cds_credenciales`, `guardar_cds_credenciales`,
+  `probar_cds_credenciales`, `abrir_url_externa`; bloqueo de descarga ERA5 sin credenciales.
+- **`ui/`:** nav «Credenciales ERA5», formulario guardar/probar; aviso en paso ERA5 del asistente.
+*Archivos:* `io_era5.py`, `api_web.py`, `ui/index.html`, `ui/app.js`, `ui/styles.css`,
+`test_regresion.py`, `README.md`, `HANDOFF.md`.
+*Notas:* +4 tests credenciales CDS; el archivo sigue siendo `~/.cdsapirc` (compatible con cdsapi).
+
+### 2026-06-27 · Fix timeout UI en descarga ERA5 larga (Cursor)
+*Qué/por qué:* `waitTask("era5")` cortaba a los 10 min aunque la descarga siguiera;
+rangos anuales necesitan mucho más. Timeout deslizante (30–60 min sin actividad),
+renovación en cada línea de log, latido cada 5 min mientras el CDS responde.
+*Archivos:* `ui/app.js`, `io_era5.py`, `HANDOFF.md`.
+
+### 2026-06-27 · ERA5: descarga paralela de tramos (2 a la vez) (Cursor)
+*Qué/por qué:* rangos largos eran lentos porque los tramos se pedían en serie;
+ahora hasta 2 peticiones CDS simultáneas (cliente cdsapi por hilo, logs con lock).
+*Archivos:* `io_era5.py`, `test_regresion.py`, `HANDOFF.md`.
+*Notas:* test `test_descargar_serie_paralelo_max_dos` verifica el tope; si el CDS
+empieza a devolver errores de cola, bajar a 1 worker.
+
+### 2026-06-27 · ERA5: descarga larga en tramos mensuales + concat (Cursor)
+*Qué/por qué:* peticiones >~31 días al CDS devolvían 403 *cost limits exceeded*;
+ahora rangos largos se parten en tramos (fin de mes), se cachean en `chunks/` y
+se concatenan en un único `era5_serie.nc`.
+*Archivos:* `io_era5.py`, `test_regresion.py`, `HANDOFF.md`.
+
+### 2026-06-27 · Caché ERA5 por rango de fechas (Cursor)
+*Qué/por qué:* al descargar otro periodo en la misma lat/lon, se reutilizaba
+`salidas/ERA5_{lat}_{lon}_serie/era5_serie.nc` y el tablero mostraba siempre el
+primer rango.
+*Arreglo:* `_nombre_fuente` y `ruta_cache_serie` incluyen inicio/fin; tablero PNG
+junto a la carpeta ERA5; UI invalida descarga si cambian fechas/coords.
+*Archivos:* `io_era5.py`, `motor_web.py`, `pasos_analizar.py`, `app_tablero.py`,
+`tablero_oleaje.py`, `ui/app.js`, `test_regresion.py`, `HANDOFF.md`.
+
+### 2026-06-27 · Fix ERA5: poll_eventos roto en UI web (Cursor)
+*Qué/por qué:* la descarga ERA5 (y cualquier tarea en hilo) parecía colgarse
+indefinidamente: `ui/app.js` llamaba `callPy("poll_eventos")` pero la función
+correcta es `py()`, así que la cola de eventos nunca se drenaba y `waitTask`
+no recibía `task_done`.
+*Arreglo:* `py("poll_eventos")` cada 150 ms; mensajes de progreso ERA5 vía
+`log_fn` en `io_era5`/`motor_web`/`api_web`; `_retrieve_atomico` ya no borra
+el `.part` tras una descarga exitosa.
+*Archivos:* `ui/app.js`, `api_web.py`, `motor_web.py`, `io_era5.py`, `HANDOFF.md`.
+
+### 2026-06-27 · Fixes QA: rutas confinadas, fugas, borde None, cancel SWAN (Cursor)
+*Qué/por qué:* implementación completa del informe QA: confinamiento de rutas vía API
+web, zip-slip robusto, validación ERA5/borde, cierre de datasets y cancelación SWAN
+desde la UI web.
+*Cambios principales:*
+- **`seguridad.py`:** `confina_usuario()` (home + `salidas/`).
+- **`motor_web.py` / `api_web.py`:** todas las rutas de lectura/escritura validadas;
+  `cancelar_swan()` + botón en UI; `abrir_en_explorador` confinado.
+- **`io_era5.py`:** `validar_rango_fechas()`; zip-slip con `is_relative_to`.
+- **`swan_builder.py`:** `validar_caso` ante `per`/`dir` None; nido sin división por cero.
+- **Fugas:** `ds.close()` en `pasos_modelar`, `gui_swan`, `app_tablero`, `pasos_analizar`;
+  rasters en `io_batimetria` con context manager.
+- **`validacion.py`:** chequeo temporal sin coord `time`; **`io_oleaje.py`:** CSV sin columnas;
+  **`config.py`:** aviso si falla escritura; **`ui/app.js`:** null en borde + cancel SWAN.
+*Archivos:* `seguridad.py`, `motor_web.py`, `api_web.py`, `io_era5.py`, `swan_builder.py`,
+`pasos_modelar.py`, `gui_swan.py`, `app_tablero.py`, `pasos_analizar.py`, `io_batimetria.py`,
+`validacion.py`, `io_oleaje.py`, `config.py`, `ui/app.js`, `test_regresion.py`, `HANDOFF.md`.
+*Notas:* 92 tests regresión+nesting en verde (+5 tests: confina_usuario, fechas, borde None,
+zip-slip, validación sin time).
+
+### 2026-06-27 · Endurecimiento QA: seguridad, validación y robustez (Cursor)
+*Qué/por qué:* implementación del informe QA completo: saneamiento de rutas/nombres,
+validación más estricta, corrección ERA5 `mwd`→`Dir` (procedencia náutica), UI web más
+segura en hilos y datos degenerados.
+*Cambios principales:*
+- **`seguridad.py` (nuevo):** whitelist de nombres SWAN (sin espacios), segmentos de
+  ruta, confinamiento, zip-slip en referencias READINP.
+- **`io_era5.py`:** conversión `mwd`+180°; zip-slip al extraer CDS; exige swh/pp1d/mwd.
+- **`validacion.py`:** NaN cuenta como fallo en Hs/Tp/Dir/peralte.
+- **`swan_runner.py` / `gui_swan.py`:** rechazo de nombres con espacios; `matar_proceso_arbol`
+  (taskkill /T); `proteger_swan` acotado al PID lanzador.
+- **`swan_builder.py` / `motor_web.py` / `pasos_modelar.py`:** escritura sanitizada;
+  validación SWAN sin copiar `.bot`; copia solo al escribir/correr; NONSTAT exige tiempos.
+- **`api_web.py` / `ui/app.js`:** cola de eventos + `poll_eventos`; errores sin traceback
+  completo; JSON guards; `waitTask` con timeout; validación borde/ERA5/rutas en web.
+- **`productos.py` / `borde_oleaje.py` / `tablero_oleaje.py`:** guardas ante series vacías
+  o degeneradas; `ds.close()` en finally.
+- **`config.py`:** lock en escritura; **`geo_malla.py`:** zona UTM acotada 1–60.
+*Archivos:* `seguridad.py`, `rutas.py`, `io_era5.py`, `validacion.py`, `swan_*`, `motor_web.py`,
+`api_web.py`, `ui/app.js`, `productos*.py`, `borde_oleaje.py`, `tablero_oleaje.py`,
+`io_batimetria.py`, `io_swan*.py`, `prioridad.py`, `config.py`, `geo_malla.py`,
+`particion_espectral.py`, `gui_swan.py`, `pasos_modelar.py`, `app_tablero.py`,
+`test_regresion.py`, `HANDOFF.md`.
+*Notas:* 87 tests regresión+nesting en verde; +4 tests nuevos (ERA5 Dir, seguridad, NaN).
+`test_asistente` puede fallar si Tcl/Tk no está disponible en el entorno de CI.
+
+### 2026-06-27 · Tablero adaptativo para series cortas (ERA5 ~1 mes) (Cursor)
+*Qué/por qué:* al descargar ERA5 de un mes, el tablero mostraba paneles pensados para
+series multi-anuales (serie con 2 puntos mensuales, climatología con meses vacíos,
+máximo anual trivial). Ahora el registro adaptativo de `productos.py` ajusta qué se dibuja
+según la duración de los datos.
+*Cambios:*
+- **Serie temporal:** si el span es &lt; 365 días → Hs en resolución nativa (cada paso ERA5);
+  si no → media mensual como antes.
+- **Climatología mensual** y **régimen extremo (máx. anual):** solo si hay ≥ 2 años (mismo
+  criterio que Gumbel); en series cortas se omiten con motivo en el informe de capacidades.
+- **Curva de excedencia:** anotaciones P50, P90 y P99 sobre la curva.
+*Archivos:* `productos.py`, `test_regresion.py`, `HANDOFF.md`.
+*Notas:* 99 tests en verde. Regenerar tablero tras descargar ERA5 para ver el nuevo layout.
+
 ### 2026-06-27 · Fix UI web: «Siguiente» quedaba muerto tras cada tarea + regla de commit (Claude Code)
 *Qué/por qué:* tras descargar ERA5 (o cualquier tarea en hilo) la UI web **no dejaba
 avanzar** con «Siguiente». En `ui/app.js`, `setBusy(on)` deshabilitaba todos los botones
@@ -362,25 +600,27 @@ Patrón común de todo el código: **registro adaptativo** — cada producto dec
   2024). Videos en `salidas\<fuente>\` (ver Salidas).
 
 ### GUI + lanzadores
-- **Interfaz principal (pywebview):** `app_web.py` + carpeta `ui/`.
-- **Lanzador del usuario:** `Tablero de Oleaje.lnk` **dentro de la carpeta del proyecto**
-  (no Escritorio). Target: `python.exe` con argumentos `"…\app_web.py" --gui`.
-  Regenerar: `crear_acceso_directo.ps1` o doble clic en `Crear Tablero.bat`.
+- **Única interfaz de usuario:** `app_web.py` + carpeta `ui/` (pywebview).
+- **Windows — lanzador del usuario:** `iniciar_windows.bat` o **`Tablero de Oleaje.lnk`**
+  (regenerar con `crear_acceso_directo.ps1` / `Crear Tablero.bat`). El .bat crea
+  `.venv`, instala `requirements.txt` y ejecuta `app_web.py --gui`. Guía: `GUIA DE USO WINDOWS.txt`.
+- **macOS — lanzador del cliente:** `iniciar_mac.command` (doble clic; ver `GUIA DE USO MAC.txt`).
+  Crea `.venv`, instala `requirements.txt` y ejecuta `app_web.py --gui`. Primera vez: `chmod +x`.
 - **Desde terminal (con consola, para depurar):** `python app_web.py` (sin `--gui`).
-- **Respaldo tkinter:** `python app_tablero.py` — ya **no** debe usarse en el `.lnk`.
-- Requiere `pywebview` y WebView2 (Edge). Tres caminos guiados + modo avanzado en HTML;
-  motor en `motor_web.py` / `api_web.py`.
-- **SWAN modal:** `gui_swan.VentanaSwan` — desde modo avanzado web («Procesar SWAN…»)
-  o desde `app_tablero.py`. Campo avanzado **Offset UTM grande** (default Coronel).
-- `_asegurar_salida_estandar()` en `app_tablero.py`; en `app_web.py`: redirección
-  stdout/stderr con `--gui` o si son `None` (pythonw). Usar **`os.devnull`**, no `Path.devnull`.
+- **Tkinter obsoleto:** `app_tablero.py`, `asistente.py`, `pasos_*.py`, `gui_swan.py`
+  siguen en el repo **solo para tests**; no ampliar. Si se ejecuta `app_tablero.py`,
+  redirige a la app web.
+- Requiere `pywebview`. Windows: WebView2 (Edge); macOS: WebKit (backend `cocoa`).
+  Tres caminos guiados + modo avanzado en HTML; motor en `motor_web.py` / `api_web.py`.
+  Apertura de archivos/carpetas: `sistema.py` (multiplataforma). SWAN desde web;
+  **no** se abre `gui_swan` desde la UI web.
+- En `app_web.py`: log en `salidas/app_web.log` con `--gui`; stdout/stderr no van a `/devnull`.
 
-### Modo guiado (asistente) — sub-proyecto C
-- **Web (principal):** wizards en `ui/app.js` (analizar / modelar / ver); pasos y
-  validación en JS; llamadas a `api_web.Api`. Misma secuencia que los `pasos_*.py`.
-- **Tkinter (respaldo):** `app_tablero.py` contenedor de vistas + `asistente.Wizard` +
-  `pasos_analizar.py` / `pasos_modelar.py` / `pasos_ver.py`. `MaquinaWizard` testeable
-  sin tk (`test_asistente.py`).
+### Modo guiado (asistente)
+- **Web (único):** wizards en `ui/js/` (analizar / modelar / ver); validación en JS;
+  llamadas a `api_web.Api`. Motor en `motor_web.py`.
+- **Tkinter (obsoleto):** `pasos_*.py` + `asistente.Wizard` — conservados para
+  `test_asistente.py`; la lógica de negocio vive en `motor_web.py`.
 - **Nesting (anidado) implementado**: el camino Modelar arma un par grande+nido
   desde cero. `swan_builder.escribir_par_anidado` escribe los dos `.swn` enlazados
   (NGRID/NESTOUT en el grande ↔ BOU NEST en el nido) y `validar_caso_anidado`

@@ -211,7 +211,9 @@ class Wizard(ttk.Frame):
         (resultado=None si hubo excepción, que se vuelca al log).
         """
         if self._tarea_activa:
-            return                         # ya hay una tarea en curso; ignorar reentradas
+            self.log.insert("end", "Ya hay una tarea en curso; espera a que termine.\n")
+            self.log.see("end")
+            return False
         self._tarea_activa = True
         self._bloquear(True)
 

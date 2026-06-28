@@ -11,7 +11,6 @@ Al terminar, la carpeta queda con las salidas listas para el botón "Crear" de l
 ventana principal. El cálculo corre en un hilo para no congelar la interfaz.
 """
 
-import os
 import threading
 import traceback
 from pathlib import Path
@@ -21,6 +20,7 @@ from tkinter import filedialog, messagebox, ttk, scrolledtext
 import swan_runner
 import swan_builder
 import config
+import sistema
 import estilo
 import io_oleaje
 import borde_oleaje
@@ -149,7 +149,7 @@ class VentanaSwan(tk.Toplevel):
         self._cancelar.set()
         if self._proc and self._proc.poll() is None:
             try:
-                self._proc.terminate()
+                swan_runner.matar_proceso_arbol(self._proc)
             except Exception:
                 pass
         self.destroy()
@@ -323,12 +323,16 @@ class VentanaSwan(tk.Toplevel):
         if not cond:
             return
         modo, tr = cond
+        ds = None
         try:
             ds = io_oleaje.cargar(ruta)
             borde = borde_oleaje.condicion_borde(ds, modo, tr)
         except Exception as e:
             messagebox.showerror("No se pudo derivar el borde", str(e))
             return
+        finally:
+            if ds is not None:
+                ds.close()
         self.aplicar_borde(borde)
 
     # -------------------------------------------------------------- acciones
@@ -468,7 +472,7 @@ class VentanaSwan(tk.Toplevel):
         self._cancelar.set()
         if self._proc and self._proc.poll() is None:
             try:
-                self._proc.terminate()
+                swan_runner.matar_proceso_arbol(self._proc)
             except Exception:
                 pass
         self.estado.config(text="Cancelando…")
@@ -510,11 +514,15 @@ class VentanaSwan(tk.Toplevel):
             salidas = tuple(v for v, on in self.salidas.items() if on.get())
             if not salidas:
                 raise ValueError("Elige al menos una variable de salida.")
+            if not self.estacionario.get():
+                raise ValueError(
+                    "El modo no estacionario no está disponible desde esta ventana. "
+                    "Usa un .swn manual con COMPUTE NONSTAT completo.")
 
-            # Validación física antes de generar/correr (la batimetría ya está
-            # copiada en `destino`, así que se valida también su tamaño).
+            # Validación física antes de generar/correr.
             errores, avisos = swan_builder.validar_caso(
-                malla, {"archivo": bot.name}, bordes, carpeta=destino)
+                malla, {"archivo": bot.name, "ruta": str(bot)}, bordes,
+                carpeta=destino)
             if errores:
                 messagebox.showerror("Revisa el caso", "\n\n".join(errores))
                 return
@@ -571,7 +579,7 @@ class VentanaSwan(tk.Toplevel):
                     "La corrida terminó correctamente.\n\n¿Abrir la carpeta de "
                     "resultados? Luego puedes usar «Crear» para graficar."):
                 try:
-                    os.startfile(carpeta)
+                    sistema.abrir_carpeta(carpeta)
                 except Exception:
                     pass
         else:

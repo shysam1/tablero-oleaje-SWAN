@@ -65,11 +65,31 @@ def _mapa_hs(ax, ds, meta):
 def _mapa_setup(ax, ds, meta):
     """Mapa de set-up por oleaje (diverge en torno a 0: set-down / set-up)."""
     valores = ds["Setup"].values
+    vmin = float(np.nanmin(valores))
+    vmax = float(np.nanmax(valores))
+    if not (np.isfinite(vmin) and np.isfinite(vmax)):
+        ax.set_title("Set-up sin datos finitos", fontsize=9)
+        ax.axis("off")
+        return
     norm = TwoSlopeNorm(vcenter=0.0,
-                        vmin=min(float(np.nanmin(valores)), -1e-6),
-                        vmax=max(float(np.nanmax(valores)), 1e-6))
+                        vmin=min(vmin, -1e-6),
+                        vmax=max(vmax, 1e-6))
     _mapa_campo(ax, ds, "Setup", cmap="RdBu_r", norm=norm, con_isobatas=True)
     ax.set_title(f"Set-up por oleaje — {ds.attrs.get('titulo', '')}", fontsize=9)
+
+
+def _tiene_datos_finitos(ds, var):
+    if ds is None or var not in ds.data_vars:
+        return False
+    return bool(np.isfinite(ds[var].values).any())
+
+
+def _espectro_valido(espectro):
+    if espectro is None:
+        return False
+    if not hasattr(espectro, "data_vars") or "Efth" not in espectro.data_vars:
+        return False
+    return bool(np.isfinite(espectro["Efth"].values).any())
 
 
 def _espectro_direccional(ax, ds_spec, meta):
@@ -83,7 +103,11 @@ def _espectro_direccional(ax, ds_spec, meta):
 
     # Acotar el radio a la banda que concentra ~99,5% de la energía (swell).
     marginal = np.nansum(densidad, axis=1)
-    acumulada = np.cumsum(marginal) / marginal.sum()
+    suma = float(np.nansum(marginal))
+    if not np.isfinite(suma) or suma <= 0:
+        ax.set_title("Espectro sin energía finita", fontsize=9, pad=8)
+        return
+    acumulada = np.cumsum(marginal) / suma
     idx = min(int(np.searchsorted(acumulada, 0.995)), len(r) - 1)
     ax.set_ylim(0, float(r[idx]))
     ax.set_rlabel_position(135)
@@ -114,12 +138,15 @@ def evaluar(corrida):
     for p in PRODUCTOS_SWAN:
         if p["fuente"] == "dominio":
             ds = dominios.get(p["dominio"])
-            faltan = ([f"dominio {p['dominio']}"] if ds is None
-                      else [v for v in p["requiere"] if v not in ds.data_vars])
+            if ds is None:
+                faltan = [f"dominio {p['dominio']}"]
+            else:
+                faltan = [v for v in p["requiere"]
+                          if not _tiene_datos_finitos(ds, v)]
             datos = ds
         else:                                     # espectro
             datos = espectro
-            faltan = [] if espectro is not None else ["Espectro_Punto.txt"]
+            faltan = [] if _espectro_valido(espectro) else ["Espectro_Punto.txt"]
         informe.append({"nombre": p["nombre"], "disponible": not faltan,
                         "faltan": faltan, "proyeccion": p["proyeccion"],
                         "dibujar": p["dibujar"], "datos": datos})

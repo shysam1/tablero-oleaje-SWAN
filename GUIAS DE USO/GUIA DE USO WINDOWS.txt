@@ -1,0 +1,273 @@
+================================================================================
+  TABLERO DE OLEAJE — GUÍA DE USO PARA WINDOWS
+================================================================================
+
+Esta guía está pensada para quien usa la aplicación en Windows 10 u 11.
+No hace falta ser programador: basta seguir los pasos en orden.
+
+
+--------------------------------------------------------------------------------
+1. QUÉ NECESITAS ANTES DE EMPEZAR
+--------------------------------------------------------------------------------
+
+  - Windows 10 o Windows 11 (64 bits).
+  - Python 3.11 o superior instalado.
+  - Microsoft Edge WebView2 Runtime (suele venir con Windows 11 o con Edge).
+  - Conexión a internet la primera vez que abras la app (para instalar librerías).
+  - Unos 500 MB libres en disco (entorno virtual y dependencias).
+
+Opcional (solo si vas a usar esas funciones):
+
+  - SWAN instalado y el comando "swanrun" en el PATH → para CORRER modelos
+    desde la app. Sin SWAN igual puedes ver resultados de corridas ya hechas.
+  - ffmpeg en el PATH → videos en MP4. Sin ffmpeg la app genera GIF.
+  - Cuenta gratuita en Copernicus CDS → descargas ERA5 desde la app.
+
+
+--------------------------------------------------------------------------------
+2. INSTALAR PYTHON (SI AÚN NO LO TIENES)
+--------------------------------------------------------------------------------
+
+  1. Entra a: https://www.python.org/downloads/
+  2. Descarga Python 3.11 o 3.12 (64-bit).
+  3. Ejecuta el instalador.
+  4. IMPORTANTE: marca la casilla
+       "Add python.exe to PATH"
+     (o "Agregar Python al PATH") en la primera pantalla.
+  5. Pulsa "Install Now".
+
+Comprobar que quedó bien:
+
+  1. Abre "Símbolo del sistema" o PowerShell (Win + R, escribe cmd, Enter).
+  2. Escribe:
+       python --version
+     o también:
+       py -3 --version
+  3. Debe aparecer "Python 3.11.x" o superior.
+     Si dice que no reconoce el comando, reinstala Python marcando PATH.
+
+
+--------------------------------------------------------------------------------
+3. WEBVIEW2 (SI LA VENTANA NO ABRE O DICE QUE FALTA pywebview)
+--------------------------------------------------------------------------------
+
+La interfaz usa el motor web de Edge (WebView2). En Windows 11 casi siempre ya
+está instalado. Si la app falla al abrir la ventana:
+
+  1. Actualiza Microsoft Edge a la última versión, o
+  2. Instala "Evergreen Bootstrapper" desde:
+       https://developer.microsoft.com/microsoft-edge/webview2/
+
+Reinicia el PC tras instalar WebView2 y vuelve a abrir la app.
+
+
+--------------------------------------------------------------------------------
+4. COLOCAR LA APLICACIÓN EN TU PC
+--------------------------------------------------------------------------------
+
+  1. Copia la carpeta completa "Tablero Oleaje" donde quieras (Documentos, etc.).
+  2. Dentro debes ver, entre otros:
+       LEEME PRIMERO.txt
+       iniciar_windows.bat
+       Crear Tablero.bat
+       app_web.py
+       requirements.txt
+       GUIAS DE USO\   (carpeta con esta guía y la de Mac)
+
+
+--------------------------------------------------------------------------------
+5. CÓMO ABRIR LA APLICACIÓN (RECOMENDADO)
+--------------------------------------------------------------------------------
+
+Opción A — Lanzador automático (instala lo que falte solo)
+
+  1. Doble clic en:  iniciar_windows.bat
+
+  Ese archivo:
+    - Crea la carpeta .venv con un Python privado (solo la 1.ª vez).
+    - Instala todas las librerías de requirements.txt.
+    - Abre Tablero de Oleaje.
+
+  La primera vez puede tardar varios minutos. Las siguientes, mucho menos.
+
+Opción B — Acceso directo en la carpeta
+
+  1. Doble clic en:  Crear Tablero.bat
+  2. Se crea "Tablero de Oleaje.lnk" en la misma carpeta.
+  3. A partir de ahí, doble clic en ese acceso directo.
+
+  (El acceso directo ejecuta iniciar_windows.bat, con la misma instalación
+   automática de dependencias.)
+
+Opción C — Desde consola (para ver errores en pantalla)
+
+  cd "C:\ruta\a\Tablero Oleaje"
+  iniciar_windows.bat
+
+
+--------------------------------------------------------------------------------
+6. SI TE FALTAN LIBRERÍAS (INSTALACIÓN MANUAL)
+--------------------------------------------------------------------------------
+
+Usa esto solo si iniciar_windows.bat falla al instalar, o si prefieres hacerlo
+tú mismo en PowerShell o Símbolo del sistema:
+
+  cd "C:\ruta\a\Tablero Oleaje"
+  py -3 -m venv .venv
+  .venv\Scripts\activate
+  pip install --upgrade pip
+  pip install -r requirements.txt
+  python app_web.py --gui
+
+Si no tienes entorno virtual y usas Python global:
+
+  cd "C:\ruta\a\Tablero Oleaje"
+  pip install -r requirements.txt
+  python app_web.py --gui
+
+Lista de lo que instala requirements.txt (por si una falla suelta):
+
+  numpy, pandas, scipy, xarray, netCDF4, matplotlib, cdsapi, pyproj,
+  pywebview, scikit-image, pillow
+
+Para reinstalar una librería concreta (ejemplo pywebview):
+
+  .venv\Scripts\activate
+  pip install pywebview
+
+
+--------------------------------------------------------------------------------
+7. QUÉ PUEDES HACER CON LA APLICACIÓN
+--------------------------------------------------------------------------------
+
+Pantalla de inicio con tres caminos:
+
+  ANALIZAR OLEAJE EN UN PUNTO
+    Series .mat / .csv / .nc o descarga ERA5 → tableros de curvas.
+
+  MODELAR PROPAGACIÓN CON SWAN
+    Malla, batimetría, borde → correr SWAN (si lo tienes) → mapas.
+
+  VER UNA CORRIDA SWAN YA HECHA
+    Carpeta con resultados → mapas o video según el tipo de corrida.
+
+Atajos de teclado:
+
+  Enter .............. Siguiente paso
+  Esc ................ Paso anterior
+  Ctrl + L ........... Limpiar el log
+
+Resultados guardados en:
+
+  salidas\
+  (subcarpeta por cada fuente o corrida)
+
+
+--------------------------------------------------------------------------------
+8. CREDENCIALES ERA5
+--------------------------------------------------------------------------------
+
+  1. Cuenta gratuita: https://cds.climate.copernicus.eu/
+  2. Copia URL y clave API (formato UID:API-KEY).
+  3. Configúralas en la app o crea el archivo en tu usuario:
+
+       C:\Users\TU_USUARIO\.cdsapirc
+
+     Contenido:
+
+       url: https://cds.climate.copernicus.eu/api
+       key: UID:API-KEY
+
+
+--------------------------------------------------------------------------------
+9. PROBLEMAS FRECUENTES
+--------------------------------------------------------------------------------
+
+--- "python no se reconoce como comando" ---
+
+  Reinstala Python marcando "Add to PATH", o usa:
+    py -3 iniciar_windows.bat
+  desde la carpeta del proyecto.
+
+
+--- Error al instalar netCDF4 ---
+
+  En PowerShell (como administrador no suele hacer falta):
+
+    pip install --upgrade pip setuptools wheel
+    pip install netCDF4
+
+  Si sigue fallando, instala "Microsoft C++ Build Tools" desde:
+    https://visualstudio.microsoft.com/visual-cpp-build-tools/
+  (componente "Desarrollo de escritorio con C++") y repite pip install netCDF4.
+
+
+--- La ventana no abre o queda en blanco ---
+
+  1. Revisa: salidas\app_web.log
+  2. Abre desde consola para ver el error:
+       cd "C:\ruta\a\Tablero Oleaje"
+       iniciar_windows.bat
+  3. Comprueba WebView2 (sección 3).
+  4. Actualiza dependencias:
+       .venv\Scripts\activate
+       pip install -U -r requirements.txt
+
+
+--- "No se encontró swanrun" ---
+
+  Puedes graficar carpetas SWAN ya corridas sin instalar SWAN.
+  Solo necesitas SWAN para EJECUTAR modelos desde la app.
+  Añade la carpeta de SWAN al PATH de Windows después de instalarlo.
+
+
+--- Quiero videos MP4 ---
+
+  Instala ffmpeg y añádelo al PATH, o descarga builds desde:
+    https://www.gyan.dev/ffmpeg/builds/
+  (descomprime y agrega la carpeta bin al PATH del sistema).
+
+
+--- Antivirus bloquea el script .bat ---
+
+  Añade la carpeta "Tablero Oleaje" como excepción o ejecuta desde consola
+  los comandos de la sección 6.
+
+
+--------------------------------------------------------------------------------
+10. ARCHIVOS IMPORTANTES
+--------------------------------------------------------------------------------
+
+  iniciar_windows.bat .... Abrir la app e instalar dependencias (recomendado)
+  Tablero de Oleaje.lnk .. Acceso directo (se crea con Crear Tablero.bat)
+  Crear Tablero.bat ...... Regenera el .lnk y lo abre
+  GUIA DE USO WINDOWS.txt  Esta guía
+  app_web.py ............. Programa principal
+  requirements.txt ....... Lista de librerías Python
+  ui\ .................... Interfaz de la aplicación
+  salidas\ ............... Tus resultados
+  .venv\ ................. Entorno Python (se crea solo)
+
+
+--------------------------------------------------------------------------------
+11. DIFERENCIA CON macOS
+--------------------------------------------------------------------------------
+
+  En Mac el cliente usa "iniciar_mac.command" y la guía "GUIA DE USO MAC.txt".
+  En Windows usa "iniciar_windows.bat" y esta guía. El funcionamiento de la
+  app es el mismo.
+
+
+--------------------------------------------------------------------------------
+12. SI NECESITAS AYUDA AL DESARROLLADOR
+--------------------------------------------------------------------------------
+
+Indica:
+
+  - Versión de Windows (10 u 11).
+  - Salida completa de consola al ejecutar iniciar_windows.bat.
+  - Contenido relevante de salidas\app_web.log si existe.
+
+================================================================================
+  Fin de la guía — Tablero de Oleaje
+================================================================================

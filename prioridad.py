@@ -55,8 +55,8 @@ if _ES_WINDOWS:
     _k32 = ctypes.WinDLL("kernel32", use_last_error=True)
 
 
-def _pids_por_nombre(nombre):
-    """PIDs de los procesos cuyo ejecutable coincide con `nombre` (p. ej. 'swan.exe')."""
+def _pids_por_nombre(nombre, padre=None):
+    """PIDs de procesos cuyo ejecutable coincide con `nombre`; opcional filtro por padre."""
     pids = []
     snap = _k32.CreateToolhelp32Snapshot(_TH32CS_SNAPPROCESS, 0)
     if snap == _INVALID_HANDLE:
@@ -68,11 +68,41 @@ def _pids_por_nombre(nombre):
         ok = _k32.Process32First(snap, ctypes.byref(entry))
         while ok:
             if entry.szExeFile.lower() == objetivo:
-                pids.append(entry.th32ProcessID)
+                if padre is None or entry.th32ParentProcessID == padre:
+                    pids.append(entry.th32ProcessID)
             ok = _k32.Process32Next(snap, ctypes.byref(entry))
     finally:
         _k32.CloseHandle(snap)
     return pids
+
+
+def _mapa_padres():
+    """Dict pid → ppid de todos los procesos visibles."""
+    padres = {}
+    snap = _k32.CreateToolhelp32Snapshot(_TH32CS_SNAPPROCESS, 0)
+    if snap == _INVALID_HANDLE:
+        return padres
+    try:
+        entry = _PROCESSENTRY32()
+        entry.dwSize = ctypes.sizeof(_PROCESSENTRY32)
+        ok = _k32.Process32First(snap, ctypes.byref(entry))
+        while ok:
+            padres[entry.th32ProcessID] = entry.th32ParentProcessID
+            ok = _k32.Process32Next(snap, ctypes.byref(entry))
+    finally:
+        _k32.CloseHandle(snap)
+    return padres
+
+
+def _es_descendiente(pid, ancestro, padres):
+    """True si `pid` es el proceso `ancestro` o un hijo suyo."""
+    visto = set()
+    while pid and pid not in visto:
+        if pid == ancestro:
+            return True
+        visto.add(pid)
+        pid = padres.get(pid)
+    return False
 
 
 def proteger_pid(pid):
@@ -100,18 +130,22 @@ def proteger_pid(pid):
         _k32.CloseHandle(h)
 
 
-def proteger_swan(timeout=30.0, intervalo=0.3, log=None):
+def proteger_swan(timeout=30.0, intervalo=0.3, log=None, launcher_pid=None):
     """
     Espera a que aparezca swan.exe (lo lanza swanrun) y lo protege del throttling.
-    Pensado para correr en un hilo aparte tras lanzar la corrida. Como las corridas
-    se ejecutan en serie, solo hay un swan.exe a la vez. Devuelve el PID protegido
-    o None si no apareció dentro de `timeout`.
+
+    Si se pasa `launcher_pid` (PID del cmd/swanrun que lanzamos), solo se protege
+    un swan.exe descendiente de ese proceso. Devuelve el PID protegido o None.
     """
     if not _ES_WINDOWS:
         return None
     plazo = time.monotonic() + timeout
     while time.monotonic() < plazo:
-        for pid in _pids_por_nombre("swan.exe"):
+        padres = _mapa_padres() if launcher_pid else {}
+        candidatos = _pids_por_nombre("swan.exe")
+        for pid in candidatos:
+            if launcher_pid and not _es_descendiente(pid, launcher_pid, padres):
+                continue
             if proteger_pid(pid):
                 if log:
                     log(f"[velocidad] swan.exe protegido del throttling "

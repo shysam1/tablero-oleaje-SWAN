@@ -19,6 +19,7 @@ el de la corrida Coronel del usuario).
 """
 
 from pathlib import Path
+import json
 import re
 import sys
 
@@ -27,6 +28,7 @@ import xarray as xr
 
 # Offset UTM del nodo (0,0) del dominio grande (por defecto, corrida Coronel).
 UTM_LARGE_DEFAULT = (620494.0, 5876451.0)
+META_CASO = "tablero_swan.json"
 
 # Valor de relleno (excepción de SWAN) por variable. None = todo valor < 0.
 EXCEPCION = {"Hs": None, "Tp": -9.0, "Dir": -999.0, "Setup": -9.0}
@@ -99,6 +101,102 @@ def _leer_cgrid(ruta_swn):
                     "dx": xlenc / mxc, "dy": ylenc / myc,
                     "x0_local": x0, "y0_local": y0}
     raise ValueError(f"No se encontró CGRID en {ruta_swn}")
+
+
+def _dominio_grande_swn(carpeta):
+    """Devuelve (ruta.swn, geo CGRID) del dominio padre / más grande."""
+    carpeta = Path(carpeta)
+    swns = sorted(carpeta.glob("*.swn"))
+    if not swns:
+        raise ValueError(f"No hay .swn en {carpeta}")
+    geos = {s: _leer_cgrid(s) for s in swns}
+    padres = [s for s, g in geos.items()
+              if g["x0_local"] == 0 and g["y0_local"] == 0]
+    padre = (padres[0] if padres
+             else max(geos, key=lambda s: geos[s]["nx"] * geos[s]["ny"]))
+    return padre, geos[padre]
+
+
+def _parece_utm_absoluto(x, y):
+    """CGRID con coordenadas UTM reales (p. ej. malla desde lat/lon), no local 0,0."""
+    return abs(x) >= 50000 or abs(y) >= 500000
+
+
+def guardar_meta_caso(carpeta, malla_g, *, zona_utm=None, lat_centro=None,
+                      lon_centro=None):
+    """
+    Guarda offset UTM junto al caso SWAN para que «Ver corrida» lo recupere.
+    malla_g: dict con xpc, ypc (y opcionalmente el resto de la malla).
+    """
+    carpeta = Path(carpeta)
+    carpeta.mkdir(parents=True, exist_ok=True)
+    datos = {
+        "version": 1,
+        "utm_x": float(malla_g["xpc"]),
+        "utm_y": float(malla_g["ypc"]),
+    }
+    if zona_utm:
+        datos["zona_utm"] = str(zona_utm)
+    if lat_centro is not None and lon_centro is not None:
+        datos["lat_centro"] = float(lat_centro)
+        datos["lon_centro"] = float(lon_centro)
+    (carpeta / META_CASO).write_text(
+        json.dumps(datos, indent=2, ensure_ascii=False) + "\n", encoding="utf-8")
+
+
+def inferir_utm_desde_carpeta(carpeta):
+    """
+    Deduce utm_x/utm_y para mapas y video.
+
+    Orden: tablero_swan.json → CGRID UTM del dominio grande → default Coronel.
+    Devuelve dict con utm_x, utm_y, origen ('meta'|'cgrid'|'default'), mensaje
+    y zona_utm si está disponible.
+    """
+    carpeta = Path(carpeta)
+    meta_ruta = carpeta / META_CASO
+    if meta_ruta.is_file():
+        try:
+            meta = json.loads(meta_ruta.read_text(encoding="utf-8"))
+            ux = float(meta["utm_x"])
+            uy = float(meta["utm_y"])
+            zona = meta.get("zona_utm")
+            msg = "Leído de tablero_swan.json (caso generado por el Tablero)."
+            if zona:
+                msg += f" Zona {zona}."
+            return {"utm_x": ux, "utm_y": uy, "zona_utm": zona,
+                    "origen": "meta", "mensaje": msg}
+        except (json.JSONDecodeError, KeyError, TypeError, ValueError):
+            pass
+
+    try:
+        padre, geo = _dominio_grande_swn(carpeta)
+    except ValueError:
+        ux, uy = UTM_LARGE_DEFAULT
+        return {"utm_x": ux, "utm_y": uy, "zona_utm": None,
+                "origen": "default",
+                "mensaje": "Sin .swn en la carpeta; offset UTM por defecto (Coronel)."}
+
+    x0, y0 = geo["x0_local"], geo["y0_local"]
+    if x0 == 0 and y0 == 0:
+        ux, uy = UTM_LARGE_DEFAULT
+        return {"utm_x": ux, "utm_y": uy, "zona_utm": None,
+                "origen": "default",
+                "mensaje": (
+                    "CGRID del dominio grande en (0, 0) — convención local. "
+                    "Se usa el offset UTM por defecto (Coronel); cámbialo si tu "
+                    "caso es de otra zona.")}
+
+    if _parece_utm_absoluto(x0, y0):
+        return {"utm_x": x0, "utm_y": y0, "zona_utm": None,
+                "origen": "cgrid",
+                "mensaje": (
+                    f"Detectado en CGRID de {padre.name} "
+                    f"({x0:.0f}, {y0:.0f} m).")}
+
+    ux, uy = UTM_LARGE_DEFAULT
+    return {"utm_x": ux, "utm_y": uy, "zona_utm": None,
+            "origen": "default",
+            "mensaje": "No se pudo inferir UTM; se usa el valor por defecto (Coronel)."}
 
 
 def _var_de_nombre(nombre):
@@ -175,13 +273,19 @@ def leer_espectro_swan(carpeta, archivo=None):
         tokens = lineas[i].split()
         clave = tokens[0] if tokens else ""
         if clave in ("AFREQ", "RFREQ"):
+            if i + 1 >= ntot:
+                raise ValueError(f"{ruta.name}: encabezado {clave} incompleto.")
             freqs, i = _bloque(i + 2, int(lineas[i + 1].split()[0]))
         elif clave in ("CDIR", "NDIR"):
+            if i + 1 >= ntot:
+                raise ValueError(f"{ruta.name}: encabezado {clave} incompleto.")
             dirs, i = _bloque(i + 2, int(lineas[i + 1].split()[0]))
         elif "exception" in lineas[i]:
             excepcion = float(tokens[0])
             i += 1
         elif clave == "FACTOR":
+            if i + 1 >= ntot:
+                raise ValueError(f"{ruta.name}: encabezado FACTOR incompleto.")
             if freqs is None or dirs is None:
                 raise ValueError(
                     f"{ruta.name}: FACTOR antes de declarar frecuencias/direcciones.")
@@ -251,12 +355,9 @@ def _detectar_dominios(carpeta, utm_large, titulos):
     if not swns:
         raise ValueError(f"No hay .swn en {carpeta}")
     geos = {s: _leer_cgrid(s) for s in swns}
+    padre, _ = _dominio_grande_swn(carpeta)
 
-    padres = [s for s, g in geos.items()
-              if g["x0_local"] == 0 and g["y0_local"] == 0]
-    padre = padres[0] if padres else max(geos, key=lambda s: geos[s]["nx"] * geos[s]["ny"])
-
-    # Variable de cada salida: primero por el BLOCK del .swn (robusto), si no por
+    # Variable de cada salida:
     # el nombre del archivo. Inventario: (ruta, variable, nº de valores). Se
     # excluye el espectro y cualquier .txt que no sea un campo.
     mapa_block = _mapa_salidas(swns)

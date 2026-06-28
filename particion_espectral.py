@@ -26,7 +26,11 @@ def _pesos(freqs, dirs):
     """
     freqs = np.asarray(freqs, float)
     dfreq = np.gradient(freqs)
-    ddir = np.deg2rad(np.median(np.abs(np.diff(np.sort(np.asarray(dirs, float))))))
+    dirs_arr = np.sort(np.asarray(dirs, float))
+    if dirs_arr.size < 2:
+        ddir = np.deg2rad(360.0 / max(dirs_arr.size, 1))
+    else:
+        ddir = np.deg2rad(np.median(np.abs(np.diff(dirs_arr))))
     return dfreq, ddir
 
 
@@ -47,7 +51,7 @@ def _clasificar(fp, dir_media, viento, f_corte=0.125):
     if viento is not None:
         u, v = viento
         u10 = float(np.hypot(u, v))
-        dir_viento = np.rad2deg(np.arctan2(v, u)) % 360.0
+        dir_viento = (270.0 - np.degrees(np.arctan2(v, u))) % 360.0
         cp = G / (2.0 * np.pi * fp) if fp > 0 else np.inf
         delta = np.deg2rad(dir_media - dir_viento)
         return "sea" if u10 * np.cos(delta) > 1.3 * cp else "swell"

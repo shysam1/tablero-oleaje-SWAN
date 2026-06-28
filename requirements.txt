@@ -1,0 +1,25 @@
+# Tablero de Oleaje — dependencias Python
+# Instalar: pip install -r requirements.txt
+#
+# Versiones probadas en Windows y macOS (Intel + Apple Silicon M1/M2/M3).
+# En Mac ARM, pip instala wheels precompilados; no hace falta compilar a mano
+# salvo netCDF4 (ver GUIAS DE USO\…).
+
+numpy>=1.26,<3
+pandas>=2.0,<3
+scipy>=1.11,<2
+xarray>=2024.1
+netCDF4>=1.6.5
+matplotlib>=3.8,<4
+cdsapi>=0.7.0
+pyproj>=3.6,<4
+pywebview>=5.0
+scikit-image>=0.22
+pillow>=10.0
+
+# Desarrollo / tests (no necesario para usar la app):
+#   pip install pytest>=8.0
+
+# Opcional del sistema (no se instala con pip):
+# - ffmpeg en PATH → videos MP4 en lugar de GIF
+# - SWAN (swanrun en PATH) → correr modelos desde la app

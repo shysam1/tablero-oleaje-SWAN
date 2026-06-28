@@ -1,11 +1,8 @@
 """
-Interfaz gráfica del Tablero de Oleaje.
+Interfaz gráfica tkinter del Tablero de Oleaje — **OBSOLETA**.
 
-Arranca en una pantalla de inicio ("¿Qué quieres hacer?") con tres caminos
-guiados (analizar una serie, modelar con SWAN, ver una corrida existente) y un
-acceso al modo avanzado, que es la caja de herramientas de siempre (selector +
-Crear + Procesar SWAN + Descargar ERA5). Todo vive en la misma ventana, que
-intercambia "vistas".
+Los usuarios deben usar `app_web.py --gui`. Este módulo se conserva para tests
+y referencia; al ejecutarlo como script se redirige a la app web.
 """
 
 import io
@@ -24,6 +21,7 @@ import video_swan
 import io_swan_nonst
 import gui_swan
 import config
+import sistema
 import io_era5
 import rutas
 import io_oleaje
@@ -65,8 +63,7 @@ def validar_inputs_era5(lat_txt, lon_txt, inicio, fin):
     lon = float(lon_txt)
     if not (-90.0 <= lat <= 90.0 and -180.0 <= lon <= 180.0):
         raise ValueError("Latitud/longitud fuera de rango.")
-    if not (inicio and fin):
-        raise ValueError("Faltan fechas de inicio/fin.")
+    io_era5.validar_rango_fechas(inicio, fin)
     return lat, lon
 
 
@@ -333,8 +330,8 @@ class VistaAvanzado(ttk.Frame):
             except ValueError as e:
                 messagebox.showerror("Datos inválidos", str(e))
                 return
-            nc = (rutas.carpeta_salida(io_era5._nombre_fuente(lat, lon, "serie"))
-                  / "era5_serie.nc")
+            _, nc = io_era5.ruta_cache_serie(
+                lat, lon, campos["inicio"].get(), campos["fin"].get())
             if not nc.exists():
                 messagebox.showwarning(
                     "Sin datos",
@@ -344,12 +341,16 @@ class VistaAvanzado(ttk.Frame):
             if not cond:
                 return
             modo, tr = cond
+            ds = None
             try:
                 ds = io_oleaje.cargar(nc)
                 borde = borde_oleaje.condicion_borde(ds, modo, tr)
             except Exception as e:
                 messagebox.showerror("No se pudo derivar el borde", str(e))
                 return
+            finally:
+                if ds is not None:
+                    ds.close()
             gui_swan.VentanaSwan(self, borde_inicial=borde)
 
         ttk.Button(win, text="Enviar a SWAN como borde",
@@ -362,14 +363,16 @@ class VistaAvanzado(ttk.Frame):
             with redirect_stdout(buffer):
                 ds = io_era5.descargar_serie(lat, lon, inicio, fin,
                                              incluir_viento=con_viento)
-                print(f"Serie ERA5 descargada: {ds.sizes.get('time', 0)} pasos.")
-                if con_espectro:
-                    esp = io_era5.descargar_espectro(lat, lon, inicio, fin)
-                    print(f"Espectro ERA5 descargado: {esp.sizes.get('time', 0)} pasos.")
-            carpeta = rutas.carpeta_salida(io_era5._nombre_fuente(lat, lon, "serie"))
-            nc_serie = carpeta / "era5_serie.nc"
-            self._marshal(self.ruta_datos.set, str(nc_serie))
-            self._marshal(self._exito, buffer.getvalue(), str(carpeta))
+                try:
+                    print(f"Serie ERA5 descargada: {ds.sizes.get('time', 0)} pasos.")
+                    if con_espectro:
+                        esp = io_era5.descargar_espectro(lat, lon, inicio, fin)
+                        print(f"Espectro ERA5 descargado: {esp.sizes.get('time', 0)} pasos.")
+                finally:
+                    ds.close()
+            _, nc = io_era5.ruta_cache_serie(lat, lon, inicio, fin)
+            self._marshal(self.ruta_datos.set, str(nc))
+            self._marshal(self._exito, buffer.getvalue(), str(nc.parent))
         except Exception:
             self._marshal(self._error, buffer.getvalue() + "\n" + traceback.format_exc())
 
@@ -386,10 +389,10 @@ class VistaAvanzado(ttk.Frame):
     def _elegir_carpeta(self):
         ruta = filedialog.askdirectory(
             title="Selecciona la carpeta de corrida SWAN",
-            initialdir=config.obtener("ultima_carpeta_datos"))
+            initialdir=config.obtener("ultima_carpeta_swan"))
         if ruta:
             self.ruta_datos.set(ruta)
-            config.guardar("ultima_carpeta_datos", str(Path(ruta).parent))
+            config.guardar("ultima_carpeta_swan", ruta)
 
     def _crear(self):
         ruta = self.ruta_datos.get().strip()
@@ -464,7 +467,7 @@ class VistaAvanzado(ttk.Frame):
         self.boton_crear.config(state="normal")
         self.boton_inicio.config(state="normal")
         try:
-            os.startfile(ruta_salida)
+            sistema.abrir_archivo(ruta_salida)
         except Exception:
             pass
 
@@ -531,5 +534,18 @@ class AppTablero(tk.Tk):
 
 
 if __name__ == "__main__":
-    _asegurar_salida_estandar()
-    AppTablero().mainloop()
+    import subprocess
+    import sys
+    from pathlib import Path
+
+    here = Path(__file__).resolve().parent
+    destino = here / "app_web.py"
+    print(
+        "La interfaz tkinter ya no se usa.\n"
+        f"Iniciando la app web: {destino.name} --gui\n"
+        "(Usa doble clic en «Tablero de Oleaje.lnk» la próxima vez.)",
+        file=sys.stderr,
+    )
+    raise SystemExit(
+        subprocess.call([sys.executable, str(destino), "--gui"], cwd=str(here))
+    )

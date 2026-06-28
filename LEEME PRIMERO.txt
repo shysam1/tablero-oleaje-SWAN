@@ -1,0 +1,42 @@
+================================================================================
+  TABLERO DE OLEAJE — LÉEME PRIMERO
+================================================================================
+
+Gracias por usar esta herramienta. Sigue estos pasos según tu computador:
+
+
+  WINDOWS 10 u 11
+  ---------------
+  1. Abre la carpeta:  GUIAS DE USO
+  2. Lee el archivo:    GUIA DE USO WINDOWS.txt
+  3. Instala Python 3.11+ si la guía lo indica.
+  4. Vuelve a esta carpeta y haz doble clic en:  iniciar_windows.bat
+
+     (Opcional: Crear Tablero.bat crea un acceso directo "Tablero de Oleaje.lnk")
+
+
+  macOS (Intel o Apple Silicon M1/M2/M3/M4)
+  -----------------------------------------
+  1. Abre la carpeta:  GUIAS DE USO
+  2. Lee el archivo:    GUIA DE USO MAC.txt
+  3. Instala Python 3.11+ si la guía lo indica.
+  4. En Terminal, una sola vez (cambia la ruta por la tuya):
+         cd "/ruta/a/Tablero Oleaje"
+         chmod +x iniciar_mac.command
+  5. Doble clic en:  iniciar_mac.command
+
+
+  PRIMERA VEZ
+  -----------
+  La primera apertura puede tardar varios minutos: se crea un entorno Python
+  local (.venv) y se descargan las librerías necesarias. Necesitas internet.
+
+  Tus resultados (gráficos, videos, etc.) se guardan en la carpeta  salidas/
+
+
+  AYUDA
+  -----
+  Si algo falla, no borres la carpeta .venv: abre la guía de tu sistema y
+  mira la sección "Problemas frecuentes".
+
+================================================================================

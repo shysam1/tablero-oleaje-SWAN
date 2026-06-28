@@ -14,6 +14,8 @@ oleaje hacia la costa que usa el usuario; el resto se edita a mano si hace falta
 from pathlib import Path
 import math
 
+import seguridad
+
 _G = 9.81                                  # gravedad [m/s²]
 
 # Cantidad SWAN por variable de salida (coincide con _QUANT_VAR de io_swan).
@@ -24,6 +26,10 @@ _ARCHIVO = {"Hs": "Hs.txt", "Tp": "Tp.txt", "Dir": "Dir.txt", "Setup": "Setup.tx
 def _completar(malla, batimetria):
     """Aplica los valores por defecto de malla e INPGRID (igual que construir_swn)."""
     m = {"alpc": 0.0, "mdc": 180, "flow": 0.04, "fhigh": 1.0, "msc": 30, **malla}
+    if m["mxc"] <= 0 or m["myc"] <= 0:
+        raise ValueError("mxc y myc deben ser > 0.")
+    if m["xlenc"] <= 0 or m["ylenc"] <= 0:
+        raise ValueError("xlenc y ylenc deben ser > 0.")
     b = {"xpinp": m["xpc"], "ypinp": m["ypc"], "alpinp": 0.0,
          "mxinp": m["mxc"], "myinp": m["myc"],
          "dxinp": m["xlenc"] / m["mxc"], "dyinp": m["ylenc"] / m["myc"],
@@ -58,7 +64,7 @@ def validar_caso(malla, batimetria, bordes, carpeta=None, requiere_bordes=True):
 
     # Tamaño del archivo de batimetría = (mxinp+1)·(myinp+1) valores.
     if carpeta is not None:
-        ruta_bot = Path(carpeta) / b["archivo"]
+        ruta_bot = Path(batimetria.get("ruta") or (Path(carpeta) / b["archivo"]))
         if not ruta_bot.exists():
             errores.append(f"No se encuentra la batimetría '{b['archivo']}'.")
         else:
@@ -72,7 +78,9 @@ def validar_caso(malla, batimetria, bordes, carpeta=None, requiere_bordes=True):
 
     # Resolución de malla frente a la longitud de onda en aguas profundas.
     dmax = max(m["xlenc"] / m["mxc"], m["ylenc"] / m["myc"])
-    tp = min((bd["per"] for bd in bordes), default=None)
+    pers = [bd["per"] for bd in bordes
+            if seguridad.es_finito_positivo(bd.get("per"))]
+    tp = min(pers, default=None)
     if tp:
         L0 = _G * tp ** 2 / (2 * math.pi)
         celdas = L0 / dmax
@@ -86,13 +94,19 @@ def validar_caso(malla, batimetria, bordes, carpeta=None, requiere_bordes=True):
     if requiere_bordes and not bordes:
         errores.append("Define al menos una condición de borde (lado de entrada).")
     for bd in bordes:
-        if bd["hs"] <= 0:
-            errores.append(f"Hs del borde {bd['lado']} debe ser > 0.")
-        if not 0 <= bd["dir"] <= 360:
-            avisos.append(f"La dirección del borde {bd['lado']} ({bd['dir']}°) "
+        lado = bd.get("lado", "?")
+        hs = bd.get("hs")
+        if not seguridad.es_finito_positivo(hs):
+            errores.append(f"Hs del borde {lado} debe ser > 0.")
+        per = bd.get("per")
+        if not seguridad.es_finito_positivo(per):
+            errores.append(f"Falta el periodo del borde {lado} o no es válido.")
+        dir_ = bd.get("dir")
+        if dir_ is None:
+            errores.append(f"Falta la dirección del borde {lado}.")
+        elif not seguridad.es_finito_en_rango(dir_, 0.0, 360.0):
+            avisos.append(f"La dirección del borde {lado} ({dir_}°) "
                           f"está fuera de 0–360°.")
-        if bd["per"] <= 0:
-            errores.append(f"El periodo del borde {bd['lado']} debe ser > 0.")
 
     return errores, avisos
 
@@ -120,6 +134,8 @@ def construir_swn(nombre, malla, batimetria, bordes, salidas=("Hs", "Tp", "Dir")
     punto_espectral: dict {x, y, archivo}. Si se da, emite POINTS + SPEC 2D.
     """
     m, b = _completar(malla, batimetria)
+    nombre = seguridad.escapar_comilla_swan(nombre)
+    bot_file = seguridad.escapar_comilla_swan(b["archivo"])
 
     L = ["$ Archivo SWAN generado por el Tablero de Oleaje",
          f"PROJ '{nombre}' '1'",
@@ -132,11 +148,12 @@ def construir_swn(nombre, malla, batimetria, bordes, salidas=("Hs", "Tp", "Dir")
          f"{m['mxc']} {m['myc']} CIRCLE {m['mdc']} {m['flow']} {m['fhigh']} {m['msc']}",
          f"INPGRID BOTTOM {b['xpinp']} {b['ypinp']} {b['alpinp']} "
          f"{b['mxinp']} {b['myinp']} {b['dxinp']} {b['dyinp']}",
-         f"READINP BOTTOM {b['fac']} '{b['archivo']}' {b['idla']} 0 FREE"]
+         f"READINP BOTTOM {b['fac']} '{bot_file}' {b['idla']} 0 FREE"]
 
     L += ["$", "$*********** Condiciones de borde ***********"]
     if bou_nest:
-        L.append(f"BOU NEST '{bou_nest}' CLOSED")
+        nest = seguridad.escapar_comilla_swan(bou_nest)
+        L.append(f"BOU NEST '{nest}' CLOSED")
     else:
         L.append("BOU SHAPE JONSWAP 3.3 PEAK DSPR DEGREES")
         for bd in bordes:
@@ -157,25 +174,32 @@ def construir_swn(nombre, malla, batimetria, bordes, salidas=("Hs", "Tp", "Dir")
 
     L += ["$", "$*********** Salidas ***********"]
     if nido:
-        L.append(f"NGRID '{nido['sname']}' {nido['xpn']} {nido['ypn']} 0. "
+        sname = seguridad.escapar_comilla_swan(nido["sname"])
+        nestfile = seguridad.escapar_comilla_swan(nido["nestfile"])
+        L.append(f"NGRID '{sname}' {nido['xpn']} {nido['ypn']} 0. "
                  f"{nido['xlenn']} {nido['ylenn']} {nido['mxn']} {nido['myn']}")
     for var in salidas:
         if var in _QUANT:
             L.append(f"BLOCK 'COMPGRID' NOHEADER '{_ARCHIVO[var]}' {_QUANT[var]}")
     if nido:
-        L.append(f"NESTOUT '{nido['sname']}' '{nido['nestfile']}'")
+        L.append(f"NESTOUT '{sname}' '{nestfile}'")
     if punto_espectral:
         pe = punto_espectral
+        spec_arch = seguridad.escapar_comilla_swan(pe["archivo"])
         L.append(f"POINTS 'SpecOut' {pe['x']} {pe['y']}")
-        L.append(f"SPEC 'SpecOut' SPEC2D ABS '{pe['archivo']}'")
+        L.append(f"SPEC 'SpecOut' SPEC2D ABS '{spec_arch}'")
 
     L.append("$")
     if estacionario:
         L.append("COMPUTE")
     else:
         t = tiempo or {}
-        L.append(f"COMPUTE NONSTAT {t.get('inicio','')} {t.get('paso','')} "
-                 f"{t.get('fin','')}")
+        for clave in ("inicio", "paso", "fin"):
+            if not str(t.get(clave, "")).strip():
+                raise ValueError(
+                    "Modo no estacionario requiere inicio, paso y fin "
+                    "(formato YYYYMMDD.HHMMSS).")
+        L.append(f"COMPUTE NONSTAT {t['inicio']} {t['paso']} {t['fin']}")
     L += ["STOP", ""]
     return "\n".join(L)
 
@@ -187,7 +211,9 @@ def escribir_caso(carpeta, nombre_archivo, **kwargs):
     """
     carpeta = Path(carpeta)
     carpeta.mkdir(parents=True, exist_ok=True)
-    ruta = (carpeta / nombre_archivo).with_suffix(".swn")
+    stem = seguridad.sanitizar_nombre_caso(
+        Path(str(nombre_archivo)).stem)
+    ruta = (carpeta / stem).with_suffix(".swn")
     ruta.write_text(construir_swn(**kwargs), encoding="utf-8")
     return ruta
 
@@ -200,6 +226,11 @@ def validar_caso_anidado(malla_g, malla_n):
     más fina (lo último es sólo aviso).
     """
     errores, avisos = [], []
+    for etiqueta, m in (("grande", malla_g), ("nido", malla_n)):
+        if int(m.get("mxc", 0)) <= 0 or int(m.get("myc", 0)) <= 0:
+            errores.append(
+                f"La malla {etiqueta} necesita mxc y myc mayores que cero.")
+            return errores, avisos
     gx0, gy0 = malla_g["xpc"], malla_g["ypc"]
     gx1, gy1 = gx0 + malla_g["xlenc"], gy0 + malla_g["ylenc"]
     nx0, ny0 = malla_n["xpc"], malla_n["ypc"]
@@ -234,17 +265,19 @@ def escribir_par_anidado(carpeta, nombre_grande, nombre_nido, malla_g, bat_g,
     """
     carpeta = Path(carpeta)
     carpeta.mkdir(parents=True, exist_ok=True)
+    stem_g = seguridad.sanitizar_nombre_caso(Path(str(nombre_grande)).stem)
+    stem_n = seguridad.sanitizar_nombre_caso(Path(str(nombre_nido)).stem)
     sname, nestfile = "nido1", "nest1"
     nido = {"sname": sname, "nestfile": nestfile,
             "xpn": malla_n["xpc"], "ypn": malla_n["ypc"],
             "xlenn": malla_n["xlenc"], "ylenn": malla_n["ylenc"],
             "mxn": malla_n["mxc"], "myn": malla_n["myc"]}
-    ruta_g = (carpeta / nombre_grande).with_suffix(".swn")
-    ruta_g.write_text(construir_swn(nombre_grande, malla_g, bat_g, bordes,
+    ruta_g = (carpeta / stem_g).with_suffix(".swn")
+    ruta_g.write_text(construir_swn(stem_g, malla_g, bat_g, bordes,
                                     salidas=salidas, estacionario=estacionario,
                                     tiempo=tiempo, nido=nido), encoding="utf-8")
-    ruta_n = (carpeta / nombre_nido).with_suffix(".swn")
-    ruta_n.write_text(construir_swn(nombre_nido, malla_n, bat_n, [],
+    ruta_n = (carpeta / stem_n).with_suffix(".swn")
+    ruta_n.write_text(construir_swn(stem_n, malla_n, bat_n, [],
                                     salidas=salidas, estacionario=estacionario,
                                     tiempo=tiempo, bou_nest=nestfile,
                                     punto_espectral=punto_espectral),

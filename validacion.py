@@ -19,22 +19,22 @@ PERALTE_ROTURA = 1.0 / 7.0   # límite de peralte de ola en aguas profundas
 def _chequeo_hs(ds):
     """Hs debe ser no negativa y físicamente plausible (< 20 m)."""
     da = ds["Hs"]
-    n = int(((da < 0) | (da > 20)).sum())
-    return n, "Hs fuera de 0–20 m"
+    n = int(((da < 0) | (da > 20) | da.isnull()).sum())
+    return n, "Hs fuera de 0–20 m o faltante (NaN)"
 
 
 def _chequeo_tp(ds):
     """Tp en un rango realista de oleaje (2–30 s)."""
     da = ds["Tp"]
-    n = int(((da < 2) | (da > 30)).sum())
-    return n, "Tp fuera de 2–30 s"
+    n = int(((da < 2) | (da > 30) | da.isnull()).sum())
+    return n, "Tp fuera de 2–30 s o faltante (NaN)"
 
 
 def _chequeo_dir(ds):
-    """Dirección como rumbo de procedencia, en [0, 360)."""
+    """Dirección como rumbo de procedencia, en [0, 360] (360° ≡ 0°)."""
     da = ds["Dir"]
-    n = int(((da < 0) | (da >= 360)).sum())
-    return n, "Dir fuera de [0, 360)"
+    n = int(((da < 0) | (da > 360) | da.isnull()).sum())
+    return n, "Dir fuera de [0, 360] o faltante (NaN)"
 
 
 def _chequeo_peralte(ds):
@@ -44,12 +44,14 @@ def _chequeo_peralte(ds):
     """
     L0 = G * ds["Tp"] ** 2 / (2 * np.pi)
     peralte = ds["Hs"] / L0
-    n = int((peralte > PERALTE_ROTURA).sum())
-    return n, "Peralte Hs/L0 > 1/7 (aguas profundas)"
+    n = int(((peralte > PERALTE_ROTURA) | ds["Hs"].isnull() | ds["Tp"].isnull()).sum())
+    return n, "Peralte Hs/L0 > 1/7 (aguas profundas) o dato faltante"
 
 
 def _chequeo_tiempo(ds):
     """Consistencia temporal: detecta huecos y registros duplicados."""
+    if "time" not in ds.dims and "time" not in ds.coords:
+        return 0, "sin coordenada temporal"
     t = pd.to_datetime(ds["time"].values)
     # Con 0 o 1 paso no hay intervalos que comparar: mode() vendría vacío y
     # mode()[0] reventaría con IndexError. No hay nada que evaluar.
@@ -66,7 +68,7 @@ def _chequeo_tiempo(ds):
 CHEQUEOS = [
     {"nombre": "Hs en rango plausible",       "requiere": ["Hs"],        "funcion": _chequeo_hs},
     {"nombre": "Tp en rango plausible",       "requiere": ["Tp"],        "funcion": _chequeo_tp},
-    {"nombre": "Dir en [0, 360)",             "requiere": ["Dir"],       "funcion": _chequeo_dir},
+    {"nombre": "Dir en [0, 360]",             "requiere": ["Dir"],       "funcion": _chequeo_dir},
     {"nombre": "Peralte en aguas profundas",  "requiere": ["Hs", "Tp"],  "funcion": _chequeo_peralte},
     {"nombre": "Continuidad temporal",        "requiere": [],            "funcion": _chequeo_tiempo},
 ]

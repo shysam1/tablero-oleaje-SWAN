@@ -18,6 +18,9 @@ import pytest
 import io_swan
 import io_swan_nonst
 import io_oleaje
+import io_era5
+import geo_malla
+import seguridad
 import swan_builder
 import swan_runner
 
@@ -67,6 +70,32 @@ def test_swan_offset_utm_nido_derivado():
     n1 = io_swan.cargar_corrida(carpeta)["dominios"]["n1"]
     assert float(n1["x"].min()) == pytest.approx(620494.0 + 36480.0, abs=1.0)
     assert float(n1["y"].min()) == pytest.approx(5876451.0 + 32229.0, abs=1.0)
+
+
+def test_inferir_utm_desde_meta(tmp_path):
+    io_swan.guardar_meta_caso(tmp_path, {"xpc": 610494.0, "ypc": 5866451.0},
+                              zona_utm="19S")
+    r = io_swan.inferir_utm_desde_carpeta(tmp_path)
+    assert r["origen"] == "meta"
+    assert r["utm_x"] == pytest.approx(610494.0)
+    assert r["zona_utm"] == "19S"
+
+
+def test_inferir_utm_cgrid_absoluto(tmp_path):
+    (tmp_path / "caso.swn").write_text(
+        "CGRID 250000 6340000 0 8000 8000 80 80 CIRCLE 36 0.04 1\n")
+    r = io_swan.inferir_utm_desde_carpeta(tmp_path)
+    assert r["origen"] == "cgrid"
+    assert r["utm_x"] == pytest.approx(250000.0)
+    assert r["utm_y"] == pytest.approx(6340000.0)
+
+
+def test_inferir_utm_local_cero_usa_default(tmp_path):
+    (tmp_path / "caso.swn").write_text(
+        "CGRID 0 0 0 8000 8000 80 80 CIRCLE 36 0.04 1\n")
+    r = io_swan.inferir_utm_desde_carpeta(tmp_path)
+    assert r["origen"] == "default"
+    assert r["utm_x"] == io_swan.UTM_LARGE_DEFAULT[0]
 
 
 # --------------------------- SWAN no estacionario ---------------------------
@@ -311,6 +340,8 @@ def test_particionar_serie_devuelve_dataset_por_familia():
 
 
 # --------------------------- Descarga ERA5 ---------------------------
+import urllib.request
+
 import io_era5
 import rutas
 
@@ -319,8 +350,65 @@ def test_cliente_sin_credenciales_explica(monkeypatch, tmp_path):
     """Sin ~/.cdsapirc, _cliente lanza un error claro de configuración."""
     monkeypatch.setenv("USERPROFILE", str(tmp_path))   # HOME en Windows
     monkeypatch.setenv("HOME", str(tmp_path))
-    with pytest.raises(RuntimeError, match="cdsapirc"):
+    with pytest.raises(RuntimeError, match="Credenciales ERA5"):
         io_era5._cliente()
+
+
+def test_guardar_y_estado_credenciales_cds(monkeypatch, tmp_path):
+    monkeypatch.setenv("USERPROFILE", str(tmp_path))
+    monkeypatch.setenv("HOME", str(tmp_path))
+    io_era5.guardar_credenciales_cds(
+        "https://cds.climate.copernicus.eu/api", "12345:abcdef-SECRET")
+    ruta = tmp_path / ".cdsapirc"
+    assert ruta.is_file()
+    texto = ruta.read_text(encoding="utf-8")
+    assert "12345:abcdef-SECRET" in texto
+    est = io_era5.estado_credenciales_cds()
+    assert est["configurado"] is True
+    assert est["uid"] == "12345"
+    assert est["key_enmascarada"].endswith("CRET")
+    assert "abcdef-SECRET" not in est["key_enmascarada"]
+
+
+def test_guardar_credenciales_conserva_clave(monkeypatch, tmp_path):
+    monkeypatch.setenv("USERPROFILE", str(tmp_path))
+    monkeypatch.setenv("HOME", str(tmp_path))
+    io_era5.guardar_credenciales_cds(
+        "https://cds.climate.copernicus.eu/api", "99:clave-original")
+    io_era5.guardar_credenciales_cds(
+        "https://cds.climate.copernicus.eu/api", "")
+    cred = io_era5.leer_credenciales_cds()
+    assert cred["key"] == "99:clave-original"
+
+
+def test_probar_credenciales_rechaza_formato(monkeypatch, tmp_path):
+    monkeypatch.setenv("USERPROFILE", str(tmp_path))
+    monkeypatch.setenv("HOME", str(tmp_path))
+    with pytest.raises(ValueError, match="UID:API-KEY"):
+        io_era5.probar_credenciales_cds(
+            "https://cds.climate.copernicus.eu/api", "clave-mal-formada")
+
+
+def test_probar_credenciales_acepta_respuesta_cds(monkeypatch, tmp_path):
+    monkeypatch.setenv("USERPROFILE", str(tmp_path))
+    monkeypatch.setenv("HOME", str(tmp_path))
+
+    class _Resp:
+        status = 200
+
+        def __enter__(self):
+            return self
+
+        def __exit__(self, *args):
+            return False
+
+    monkeypatch.setattr(
+        urllib.request, "urlopen",
+        lambda req, timeout=25: _Resp())
+
+    res = io_era5.probar_credenciales_cds(
+        "https://cds.climate.copernicus.eu/api", "12345:abcdef")
+    assert "aceptó" in res["mensaje"].lower()
 
 
 def test_peticion_serie_arma_area_y_variables():
@@ -362,6 +450,216 @@ def test_parsear_serie_selecciona_punto_y_renombra(tmp_path):
     assert "latitude" not in ds.dims          # punto ya seleccionado
 
 
+def test_parsear_serie_convierte_mwd_a_procedencia(tmp_path):
+    """mwd ERA5 es propagación; Dir del pipeline es procedencia náutica (+180°)."""
+    ruta = tmp_path / "serie.nc"
+    _nc_serie_sintetico(ruta)
+    ds = io_era5._parsear_serie_nc(ruta, lat=-37.0, lon=-73.5)
+    assert float(ds["Dir"].isel(time=0)) == pytest.approx(45.0)
+
+
+def test_seguridad_rechaza_nombre_caso_con_espacios():
+    import seguridad
+    with pytest.raises(ValueError):
+        seguridad.sanitizar_nombre_caso("Mi Caso")
+
+
+def test_seguridad_rechaza_path_traversal_en_salida():
+    import seguridad
+    with pytest.raises(ValueError):
+        seguridad.sanitizar_nombre_fuente("../../fuera")
+
+
+def test_confina_usuario_rechaza_ruta_sistema():
+    import sys
+    import seguridad
+    ruta = r"C:\Windows\System32" if sys.platform == "win32" else "/etc"
+    with pytest.raises(ValueError):
+        seguridad.confina_usuario(ruta, "ruta")
+
+
+def test_validar_rango_fechas_rechaza_fin_anterior():
+    with pytest.raises(ValueError, match="posterior"):
+        io_era5.validar_rango_fechas("2024-07-29", "2024-07-28")
+
+
+def test_validar_caso_rechaza_borde_sin_tp_dir():
+    errores, _ = swan_builder.validar_caso(
+        {"xpc": 0, "ypc": 0, "xlenc": 1000, "ylenc": 1000, "mxc": 10, "myc": 10},
+        {"archivo": "b.bot"},
+        [{"lado": "W", "hs": 2.0, "per": None, "dir": None}],
+    )
+    assert len(errores) >= 2
+    assert not any("TypeError" in e for e in errores)
+
+
+def test_validar_caso_rechaza_borde_nan():
+    import math
+    errores, _ = swan_builder.validar_caso(
+        {"xpc": 0, "ypc": 0, "xlenc": 1000, "ylenc": 1000, "mxc": 10, "myc": 10},
+        {"archivo": "b.bot"},
+        [{"lado": "W", "hs": float("nan"), "per": 12.0, "dir": 270.0}],
+    )
+    assert any("Hs" in e for e in errores)
+
+
+def test_cds_url_rechaza_host_arbitrario():
+    with pytest.raises(ValueError, match="Host CDS"):
+        seguridad.validar_url_cds("https://evil.example/api")
+    with pytest.raises(ValueError, match="https"):
+        seguridad.validar_url_cds("http://cds.climate.copernicus.eu/api")
+
+
+def test_nombre_fuente_no_colisiona_coords_cercanas():
+    a = io_era5._nombre_fuente(-35.584, -72.661, "serie", "2024-01-01", "2024-01-31")
+    b = io_era5._nombre_fuente(-35.586, -72.659, "serie", "2024-01-01", "2024-01-31")
+    assert a != b
+
+
+def test_longitud_para_grilla_0_360():
+    lons = np.array([0.0, 60.0, 120.0, 180.0, 240.0, 300.0])
+    assert io_era5._longitud_para_grilla(-73.5, lons) == pytest.approx(286.5)
+
+
+def test_borde_retorno_periodo_uno_falla():
+    import xarray as xr
+    import borde_oleaje
+    t = np.arange("2020-01-01", "2023-01-01", dtype="datetime64[D]")
+    ds = xr.Dataset({"Hs": ("time", np.linspace(1, 3, len(t)))}, coords={"time": t})
+    with pytest.raises(ValueError, match="mayor que 1"):
+        borde_oleaje.condicion_borde(ds, "retorno", periodo_retorno=1)
+
+
+def test_sanitizar_nombre_fuente_acepta_doble_punto():
+    assert seguridad.sanitizar_nombre_fuente("caso..v2") == "caso..v2"
+
+
+def test_malla_excesiva_rechazada():
+    with pytest.raises(ValueError, match="celdas por lado"):
+        geo_malla.malla_desde_latlon(-36, -73, 5000, 5000, 1)
+
+
+def test_confina_ruta_existe_api():
+    import api_web
+    api = api_web.Api()
+    assert api.ruta_existe("C:\\Windows\\System32") is False
+
+
+def test_zip_era5_rechaza_entrada_fuera_de_tmp(tmp_path):
+    import zipfile
+    zpath = tmp_path / "evil.zip"
+    with zipfile.ZipFile(zpath, "w") as z:
+        z.writestr("../escape.nc", b"")
+    with pytest.raises(ValueError, match="sospechosa"):
+        io_era5._abrir_descarga_cds(zpath)
+
+
+def test_validacion_sin_time_no_revienta():
+    import xarray as xr
+    ds = xr.Dataset({"Hs": ("x", [1.0, 2.0])}, coords={"x": [0, 1]})
+    res = {r["nombre"]: r for r in validacion.validar(ds)}
+    assert res["Continuidad temporal"]["n_falla"] == 0
+    assert "sin coordenada" in res["Continuidad temporal"]["detalle"]
+
+
+def test_validacion_cuenta_nan_como_falla():
+    import xarray as xr
+    ds = xr.Dataset(
+        {"Hs": ("time", [1.0, np.nan]), "Tp": ("time", [10.0, 11.0]),
+         "Dir": ("time", [270.0, 280.0])},
+        coords={"time": np.arange(2)})
+    res = {r["nombre"]: r for r in validacion.validar(ds)}
+    assert res["Hs en rango plausible"]["n_falla"] >= 1
+
+
+def test_particiones_descarga_mensual():
+    partes = io_era5._particiones_descarga("2024-07-28", "2025-07-29")
+    assert len(partes) >= 12
+    assert partes[0][0] == "2024-07-28"
+    assert partes[-1][1] == "2025-07-29"
+    assert io_era5._particiones_descarga("2024-07-01", "2024-07-31") == [
+        ("2024-07-01", "2024-07-31")]
+
+
+def test_descargar_serie_largo_concatena_tramos(monkeypatch, tmp_path):
+    """Un rango >31 días dispara varias peticiones CDS y concatena el resultado."""
+    import xarray as xr
+
+    llamadas = []
+
+    def _falso_retrieve(dataset, peticion, destino):
+        mes = int(peticion["month"][0])
+        llamadas.append(mes)
+        t = np.array([f"2024-{mes:02d}-15T00", f"2024-{mes:02d}-15T03"],
+                     dtype="datetime64[ns]")
+        lat = np.array([-36.75, -37.25])
+        lon = np.array([-73.75, -73.25])
+        forma = (len(t), len(lat), len(lon))
+        xr.Dataset(
+            {"swh": (("time", "latitude", "longitude"), np.full(forma, 2.5)),
+             "pp1d": (("time", "latitude", "longitude"), np.full(forma, 12.0)),
+             "mwd": (("time", "latitude", "longitude"), np.full(forma, 225.0))},
+            coords={"time": t, "latitude": lat, "longitude": lon},
+        ).to_netcdf(destino)
+
+    class _ClienteFalso:
+        def retrieve(self, dataset, peticion, destino):
+            _falso_retrieve(dataset, peticion, destino)
+
+    monkeypatch.setattr(io_era5, "_cliente", lambda: _ClienteFalso())
+    monkeypatch.setattr(rutas, "RAIZ_SALIDAS", tmp_path)
+
+    ds = io_era5.descargar_serie(-37.0, -73.5, "2024-01-01", "2024-03-31")
+    assert len(llamadas) == 3
+    assert ds.sizes["time"] == 6
+    _, destino = io_era5.ruta_cache_serie(-37.0, -73.5, "2024-01-01", "2024-03-31")
+    assert destino.exists()
+    ds.close()
+
+
+def test_descargar_serie_paralelo_max_dos(monkeypatch, tmp_path):
+    """Con varios tramos, no más de 2 peticiones CDS activas a la vez."""
+    import time
+    import threading
+    import xarray as xr
+
+    activos = {"n": 0, "max": 0}
+    lock = threading.Lock()
+
+    def _falso_retrieve(dataset, peticion, destino):
+        mes = int(peticion["month"][0])
+        with lock:
+            activos["n"] += 1
+            activos["max"] = max(activos["max"], activos["n"])
+        time.sleep(0.08)
+        t = np.array([f"2024-{mes:02d}-15T00", f"2024-{mes:02d}-15T03"],
+                     dtype="datetime64[ns]")
+        lat = np.array([-36.75, -37.25])
+        lon = np.array([-73.75, -73.25])
+        forma = (len(t), len(lat), len(lon))
+        xr.Dataset(
+            {"swh": (("time", "latitude", "longitude"), np.full(forma, 2.5)),
+             "pp1d": (("time", "latitude", "longitude"), np.full(forma, 12.0)),
+             "mwd": (("time", "latitude", "longitude"), np.full(forma, 225.0))},
+            coords={"time": t, "latitude": lat, "longitude": lon},
+        ).to_netcdf(destino)
+        with lock:
+            activos["n"] -= 1
+
+    class _ClienteFalso:
+        def retrieve(self, dataset, peticion, destino):
+            _falso_retrieve(dataset, peticion, destino)
+
+    monkeypatch.setattr(io_era5, "_cliente", lambda: _ClienteFalso())
+    monkeypatch.setattr(rutas, "RAIZ_SALIDAS", tmp_path)
+
+    ds = io_era5.descargar_serie(-37.0, -73.5, "2024-01-01", "2024-04-30")
+    assert ds.sizes["time"] == 8
+    assert activos["max"] <= io_era5._MAX_TRAMOS_PARALELO
+    assert activos["max"] == io_era5._MAX_TRAMOS_PARALELO
+    ds.close()
+
+
 def test_descargar_serie_usa_cliente_y_parsea(monkeypatch, tmp_path):
     """descargar_serie: pide al cliente, escribe el .nc y devuelve Dataset(time)."""
     def _falso_retrieve(dataset, peticion, destino):
@@ -380,6 +678,34 @@ def test_descargar_serie_usa_cliente_y_parsea(monkeypatch, tmp_path):
     assert ds.sizes["time"] == 2
 
 
+def test_nombre_fuente_incluye_rango_fechas():
+    n = io_era5._nombre_fuente(-37.0, -73.5, "serie", "2024-01-01", "2024-03-31")
+    assert "20240101" in n and "20240331" in n
+    assert io_era5._nombre_fuente(-37.0, -73.5, "serie", "2024-01-01", "2024-03-31") != \
+        io_era5._nombre_fuente(-37.0, -73.5, "serie", "2024-04-01", "2024-06-30")
+
+
+def test_descargar_serie_rangos_distintos_no_comparten_cache(monkeypatch, tmp_path):
+    """Dos periodos en el mismo punto usan carpetas distintas."""
+    llamadas = {"n": 0}
+
+    class _ClienteFalso:
+        def retrieve(self, dataset, peticion, destino):
+            llamadas["n"] += 1
+            _nc_serie_sintetico(destino)
+
+    monkeypatch.setattr(io_era5, "_cliente", lambda: _ClienteFalso())
+    monkeypatch.setattr(rutas, "RAIZ_SALIDAS", tmp_path)
+
+    io_era5.descargar_serie(-37.0, -73.5, "2024-01-01", "2024-01-31")
+    io_era5.descargar_serie(-37.0, -73.5, "2024-06-01", "2024-06-30")
+    assert llamadas["n"] == 2
+    _, nc1 = io_era5.ruta_cache_serie(-37.0, -73.5, "2024-01-01", "2024-01-31")
+    _, nc2 = io_era5.ruta_cache_serie(-37.0, -73.5, "2024-06-01", "2024-06-30")
+    assert nc1 != nc2
+    assert nc1.exists() and nc2.exists()
+
+
 def test_descargar_serie_redescarga_cache_corrupta(monkeypatch, tmp_path):
     """Una cache .nc vacía/corrupta no se usa: se vuelve a descargar."""
     llamadas = {"n": 0}
@@ -393,7 +719,8 @@ def test_descargar_serie_redescarga_cache_corrupta(monkeypatch, tmp_path):
     monkeypatch.setattr(rutas, "RAIZ_SALIDAS", tmp_path)
 
     # Deja una cache corrupta (0 bytes) en el sitio donde caería el .nc.
-    carpeta = rutas.carpeta_salida(io_era5._nombre_fuente(-37.0, -73.5, "serie"))
+    carpeta = rutas.carpeta_salida(
+        io_era5._nombre_fuente(-37.0, -73.5, "serie", "2024-07-28", "2024-07-28"))
     (carpeta / "era5_serie.nc").write_bytes(b"")
 
     ds = io_era5.descargar_serie(lat=-37.0, lon=-73.5,
@@ -458,7 +785,8 @@ def test_descargar_serie_cachea_nc_limpio_legible(monkeypatch, tmp_path):
     ds = io_era5.descargar_serie(-37.0, -73.5, "2024-07-28", "2024-07-28")
     assert {"Hs", "Tp", "Dir"} <= set(ds.data_vars)
 
-    carpeta = rutas.carpeta_salida(io_era5._nombre_fuente(-37.0, -73.5, "serie"))
+    carpeta = rutas.carpeta_salida(
+        io_era5._nombre_fuente(-37.0, -73.5, "serie", "2024-07-28", "2024-07-28"))
     destino = carpeta / "era5_serie.nc"
     leido = io_oleaje.cargar(str(destino))           # el pipeline lo lee como .nc normal
     assert {"Hs", "Tp", "Dir"} <= set(leido.data_vars)
@@ -574,6 +902,84 @@ def test_retorno_gumbel_disponible_con_serie_larga():
     assert 100 in gumbel["resultado"]["diseno"]
 
 
+def test_serie_corta_usa_resolucion_nativa():
+    """Con < 365 días de span, la serie temporal no agrega por mes."""
+    import xarray as xr
+    import productos
+    t = np.arange("2024-07-01", "2024-08-01", dtype="datetime64[3h]")
+    hs = np.linspace(1.0, 2.0, len(t))
+    ds = xr.Dataset({"Hs": ("time", hs)}, coords={"time": t})
+    r = productos._calc_serie(ds)
+    assert r["modo"] == "nativa"
+    assert len(r["hs"]) == len(t)
+
+
+def test_serie_larga_usa_media_mensual():
+    """Con ≥ 365 días de span, la serie temporal se agrega mensualmente."""
+    import xarray as xr
+    import productos
+    t = np.arange("2020-01-01", "2022-01-01", dtype="datetime64[D]")
+    ds = xr.Dataset({"Hs": ("time", np.ones(len(t)))}, coords={"time": t})
+    r = productos._calc_serie(ds)
+    assert r["modo"] == "mensual"
+    assert len(r["hs"]) == 24          # 24 meses en 2 años
+
+
+def test_climatologia_y_extremos_no_disponibles_serie_corta():
+    """Climatología y régimen extremo requieren span ≥ 730 d y ≥ 2 años calendario."""
+    import xarray as xr
+    import productos
+    t = np.arange("2024-07-01", "2024-09-01", dtype="datetime64[3h]")
+    ds = xr.Dataset({"Hs": ("time", np.linspace(1.0, 2.0, len(t)))}, coords={"time": t})
+    informe = {it["nombre"]: it for it in productos.evaluar(ds)}
+    for nombre in ("Climatología mensual", "Régimen extremo (máx. anual)",
+                   "Períodos de retorno (Gumbel)"):
+        item = informe[nombre]
+        assert item["disponible"] is False
+        assert item["resultado"] is None
+        assert any("730" in f or "año" in f for f in item["faltan"])
+
+
+def test_multi_anual_no_disponible_un_ano_dos_calendarios():
+    """Jul-2024→jul-2025: 2 años en el eje pero span ~1 año → sin paneles multi-anuales."""
+    import xarray as xr
+    import productos
+    t = np.arange("2024-07-28", "2025-07-29", dtype="datetime64[h]")
+    ds = xr.Dataset({"Hs": ("time", 1.5 + 0.5 * np.sin(np.linspace(0, 20, len(t))))},
+                    coords={"time": t})
+    assert productos._n_anios(ds) == 2
+    assert productos._span_dias(ds) < productos._MIN_DIAS_MULTI_ANUAL
+    informe = {it["nombre"]: it for it in productos.evaluar(ds)}
+    for nombre in ("Climatología mensual", "Régimen extremo (máx. anual)",
+                   "Períodos de retorno (Gumbel)"):
+        assert informe[nombre]["disponible"] is False
+
+
+def test_multi_anual_disponible_dos_anios_completos():
+    """Ene-2020→dic-2021: span ≥ 730 d y 2 años calendario → paneles multi-anuales."""
+    import xarray as xr
+    import productos
+    t = np.arange("2020-01-01", "2022-01-01", dtype="datetime64[D]")
+    rng = np.random.default_rng(1)
+    ds = xr.Dataset({"Hs": ("time", 1.5 + np.abs(rng.normal(0, 0.5, len(t))))},
+                    coords={"time": t})
+    assert productos.datos_suficientes_multi_anual(ds)
+    informe = {it["nombre"]: it for it in productos.evaluar(ds)}
+    for nombre in ("Climatología mensual", "Régimen extremo (máx. anual)",
+                   "Períodos de retorno (Gumbel)"):
+        assert informe[nombre]["disponible"] is True
+
+
+def test_excedencia_incluye_percentiles():
+    import xarray as xr
+    import productos
+    t = np.arange("2024-07-01", "2024-08-01", dtype="datetime64[3h]")
+    ds = xr.Dataset({"Hs": ("time", np.linspace(1.0, 3.0, len(t)))}, coords={"time": t})
+    r = productos._calc_excedencia(ds)
+    assert set(r["percentiles"]) == {50, 90, 99}
+    assert r["percentiles"][50] < r["percentiles"][99]
+
+
 def test_registro_productos_detecta_particion_con_efth():
     import xarray as xr
     import productos
@@ -669,6 +1075,15 @@ def test_borde_retorno_pocos_datos_falla():
     t = np.arange("2020-01-01", "2020-02-01", dtype="datetime64[D]")   # 1 año solo
     ds = xr.Dataset({"Hs": ("time", np.linspace(1, 3, len(t)))}, coords={"time": t})
     with pytest.raises(ValueError, match="2 años"):
+        borde_oleaje.condicion_borde(ds, "retorno")
+
+
+def test_borde_retorno_un_ano_dos_calendarios_falla():
+    """Gumbel en borde exige span ≥ 730 d, no solo 2 años calendario."""
+    import xarray as xr
+    t = np.arange("2024-07-28", "2025-07-29", dtype="datetime64[h]")
+    ds = xr.Dataset({"Hs": ("time", np.linspace(1, 3, len(t)))}, coords={"time": t})
+    with pytest.raises(ValueError, match="730"):
         borde_oleaje.condicion_borde(ds, "retorno")
 
 
@@ -811,6 +1226,44 @@ def test_generar_bot_orientacion_norte_sur(tmp_path):
     assert depth[-1, :].mean() < depth[0, :].mean()
 
 
+def test_leer_bot_como_grilla_rechaza_conteo_incorrecto(tmp_path):
+    malla = {"xpc": 0, "ypc": 0, "xlenc": 1000, "ylenc": 1000, "mxc": 5, "myc": 5}
+    bot = tmp_path / "mal.bot"
+    bot.write_text(" ".join("1.0" for _ in range(20)))
+    with pytest.raises(ValueError, match="requiere 36"):
+        io_batimetria.leer_bot_como_grilla(bot, malla)
+
+
+def test_validar_bot_malla_ok_y_rechazo(tmp_path):
+    import motor_web
+    malla = {"xpc": 0, "ypc": 0, "xlenc": 1000, "ylenc": 1000, "mxc": 2, "myc": 2}
+    ok_bot = tmp_path / "ok.bot"
+    ok_bot.write_text("\n".join(f"{10 + i:.2f}" for i in range(9)))
+    res = motor_web.validar_bot_malla(str(ok_bot), malla)
+    assert res["ok"] is True
+    assert res["meta"]["n_nodos"] == 9
+    assert res["meta"]["estado"] in ("ok", "warn")
+
+    mal_bot = tmp_path / "mal.bot"
+    mal_bot.write_text("1.0\n" * 20)
+    res2 = motor_web.validar_bot_malla(str(mal_bot), malla)
+    assert res2["ok"] is False
+    assert res2["meta"]["n_esperados"] == 9
+    assert "9" in res2["error"]
+
+
+def test_preview_batimetria_exige_conteo_correcto(tmp_path):
+    import motor_web
+    malla = {"xpc": 0, "ypc": 0, "xlenc": 1000, "ylenc": 1000, "mxc": 2, "myc": 2}
+    bot = tmp_path / "b.bot"
+    bot.write_text("\n".join("5.0" for _ in range(9)))
+    url = motor_web.preview_batimetria(str(bot), malla)
+    assert url.startswith("data:image/png;base64,")
+    bot.write_text("1.0\n" * 20)
+    with pytest.raises(ValueError, match="requiere 9"):
+        motor_web.preview_batimetria(str(bot), malla)
+
+
 def test_url_erddap_arma_bbox():
     url = io_batimetria._url_erddap(-33.1, -32.9, -71.8, -71.5)
     assert url.startswith("https://")
@@ -864,24 +1317,26 @@ def test_gui_swan_expone_definir_malla_latlon():
 
 
 # --------------------------- Carreras GUI/hilos ---------------------------
-def test_ventana_swan_cierre_cancela_proceso():
-    """Cerrar la ventana mientras corre SWAN cancela y mata el proceso (no huérfano)."""
+def test_ventana_swan_cierre_cancela_proceso(monkeypatch):
+    """Cerrar la ventana mientras corre SWAN cancela y mata el árbol de procesos."""
     import gui_swan
+    import swan_runner
     import tkinter as tk
+    matados = []
+    monkeypatch.setattr(swan_runner, "matar_proceso_arbol",
+                        lambda proc: matados.append(proc))
     root = tk.Tk(); root.withdraw()
     try:
         win = gui_swan.VentanaSwan(root)
 
         class _Proc:
-            def __init__(self): self.killed = False
-            def poll(self): return None              # "sigue vivo"
-            def terminate(self): self.killed = True
+            def poll(self): return None
 
         p = _Proc()
         win._proc = p
         win._al_cerrar()
-        assert p.killed                              # mató swan.exe
-        assert win._cancelar.is_set()                # marcó cancelación
+        assert matados == [p]
+        assert win._cancelar.is_set()
     finally:
         root.destroy()
 
@@ -1003,3 +1458,99 @@ def test_chequeo_tiempo_detecta_hueco_y_duplicado():
     n_falla, detalle = validacion._chequeo_tiempo(ds)
     assert n_falla == 2
     assert "1 huecos" in detalle and "1 duplicados" in detalle
+
+
+def test_revision_datos_estructurada(tmp_path):
+    import xarray as xr
+    import motor_web
+    nc = tmp_path / "serie.nc"
+    t = np.array(["2020-01-01", "2020-06-01", "2021-01-01"], dtype="datetime64[ns]")
+    ds = xr.Dataset(
+        {"Hs": ("time", [1.0, 2.0, 1.5]), "Tp": ("time", [10.0, 11.0, 10.5]),
+         "Dir": ("time", [270.0, 280.0, 275.0])},
+        coords={"time": t},
+    )
+    ds.to_netcdf(nc)
+    ds.close()
+    res = motor_web.revision_datos(str(nc))
+    assert "validacion" in res and "productos" in res
+    assert res["n_pasos"] == 3
+    assert isinstance(res["validacion"], list)
+
+
+def test_comparar_series(tmp_path):
+    import xarray as xr
+    import motor_web
+    t = np.array(["2020-01-01", "2020-02-01", "2020-03-01"], dtype="datetime64[ns]")
+    for nombre, hs in (("a.nc", [1.0, 2.0, 3.0]), ("b.nc", [1.1, 1.9, 3.2])):
+        ds = xr.Dataset({"Hs": ("time", hs), "Tp": ("time", [10]*3), "Dir": ("time", [270]*3)},
+                        coords={"time": t})
+        ds.to_netcdf(tmp_path / nombre)
+        ds.close()
+    c = motor_web.comparar_series(str(tmp_path / "a.nc"), str(tmp_path / "b.nc"))
+    assert c["n"] == 3
+    assert c["rmse"] >= 0
+
+
+def test_listar_cache_era5_vacio(monkeypatch, tmp_path):
+    import motor_web
+    import rutas
+    monkeypatch.setattr(rutas, "RAIZ_SALIDAS", tmp_path / "salidas")
+    (tmp_path / "salidas").mkdir()
+    assert motor_web.listar_cache_era5() == []
+
+
+def test_preview_malla_devuelve_data_url():
+    import motor_web
+    malla = {"xpc": 600000, "ypc": 5800000, "xlenc": 8000, "ylenc": 8000,
+             "mxc": 80, "myc": 80, "zona_utm": "19S"}
+    url = motor_web.preview_malla(malla, -37.0, -73.5)
+    assert url.startswith("data:image/png;base64,")
+
+
+def test_listar_plantillas_malla():
+    import motor_web
+    pl = motor_web.listar_plantillas_malla()
+    assert any(p["id"] == "coronel" for p in pl)
+    coronel = next(p for p in pl if p["id"] == "coronel")
+    assert "nido" in coronel
+
+
+def test_evaluar_resolucion_malla_fina():
+    import motor_web
+    malla = {"mxc": 80, "myc": 80, "xlenc": 8000, "ylenc": 8000}
+    ev = motor_web.evaluar_resolucion_malla(malla)
+    assert ev["celda_m"] == 100
+    assert any("ETOPO" in a for a in ev["avisos"])
+
+
+def test_checklist_correr_swan():
+    import motor_web
+    ctx = {
+        "carpeta_caso": "C:/tmp/caso",
+        "dominios": [{"malla": {"mxc": 1}, "bot": "b.bot", "bordes": [{"lado": "W"}]}],
+    }
+    items = motor_web.checklist_correr_swan(ctx)
+    assert all(i["ok"] for i in items)
+
+
+def test_preview_malla_anidada():
+    import motor_web
+    g = {"xpc": 600000, "ypc": 5800000, "xlenc": 48000, "ylenc": 59000,
+         "mxc": 48, "myc": 59, "zona_utm": "19S"}
+    n = {"xpc": 620000, "ypc": 5820000, "xlenc": 9000, "ylenc": 10000,
+         "mxc": 45, "myc": 50, "zona_utm": "19S"}
+    url = motor_web.preview_malla_anidada(g, n)
+    assert url.startswith("data:image/png;base64,")
+
+
+def test_registrar_recientes(tmp_path, monkeypatch):
+    import motor_web
+    import config
+    png = tmp_path / "tablero.png"
+    png.write_bytes(b"\x89PNG\r\n\x1a\n" + b"x" * 40)
+    monkeypatch.setattr(config, "_RUTA", tmp_path / "config.json")
+    motor_web.registrar_producto(str(png), "tablero_oleaje")
+    items = motor_web.listar_recientes()
+    assert len(items) == 1
+    assert items[0]["nombre"] == "tablero.png"

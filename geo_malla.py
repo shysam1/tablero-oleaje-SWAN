@@ -10,10 +10,16 @@ from pyproj import Transformer
 
 from io_batimetria import epsg_utm
 
+# Límites de seguridad para evitar mallas gigantes (OOM / cuelgue).
+_MAX_CELDAS_LADO = 5000
+_MAX_NODOS = 4_000_000
+
 
 def _zona_utm(lat, lon):
     """Zona UTM ('19S', '18S', '19N', ...) del punto."""
-    zona = int((lon + 180) // 6) + 1
+    lon_n = ((float(lon) + 180.0) % 360.0) - 180.0
+    zona = int((lon_n + 180) // 6) + 1
+    zona = max(1, min(60, zona))
     return f"{zona}{'S' if lat < 0 else 'N'}"
 
 
@@ -41,6 +47,14 @@ def malla_desde_latlon(lat_centro, lon_centro, ancho_km, alto_km, celda_m):
     if mxc < 2 or myc < 2:
         raise ValueError("La celda es demasiado grande: se necesitan al menos "
                          "2 celdas por lado.")
+    if mxc > _MAX_CELDAS_LADO or myc > _MAX_CELDAS_LADO:
+        raise ValueError(
+            f"La malla excede el máximo de {_MAX_CELDAS_LADO} celdas por lado "
+            f"({mxc}×{myc}). Reduce el dominio o aumenta el tamaño de celda.")
+    if (mxc + 1) * (myc + 1) > _MAX_NODOS:
+        raise ValueError(
+            f"La malla tiene demasiados nodos ({(mxc + 1) * (myc + 1):,}). "
+            "Reduce el dominio o aumenta el tamaño de celda.")
 
     zona = _zona_utm(lat_centro, lon_centro)
     a_utm = Transformer.from_crs(4326, epsg_utm(zona), always_xy=True)

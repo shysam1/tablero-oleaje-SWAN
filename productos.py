@@ -16,6 +16,7 @@ Estructura de un producto:
 import sys
 
 import numpy as np
+import matplotlib.dates as mdates
 import matplotlib.pyplot as plt
 from scipy import stats
 
@@ -25,6 +26,41 @@ import productos_particion
 _integrar = getattr(np, "trapezoid", None) or np.trapz
 
 AZUL = "#1f6feb"
+
+# Umbrales del registro adaptativo (misma lógica que Gumbel para productos multi-anuales).
+_MIN_ANIOS_CLIMA = 2
+_MIN_DIAS_SERIE_MENSUAL = 365
+# Span mínimo (~2 años) además de años calendario: evita jul-2024→jul-2025 (2 años
+# en el eje pero solo ~12 meses de registro y máximos anuales parciales).
+_MIN_DIAS_MULTI_ANUAL = 730
+
+
+def _span_dias(ds):
+    """Duración de la serie en días (último − primer instante)."""
+    t = ds["time"].values
+    if t.size < 2:
+        return 0.0
+    return float((t[-1] - t[0]) / np.timedelta64(1, "D"))
+
+
+def _n_anios(ds):
+    """Número de años distintos con dato (tamaño de la serie de máximos anuales)."""
+    return int(ds["Hs"].groupby("time.year").max().sizes.get("year", 0))
+
+
+def datos_suficientes_multi_anual(ds):
+    """Productos anuales/extremos: span ≥ ~2 años y ≥ 2 años calendario con dato."""
+    return (_span_dias(ds) >= _MIN_DIAS_MULTI_ANUAL
+            and _n_anios(ds) >= _MIN_ANIOS_CLIMA)
+
+
+_MOTIVO_MULTI_ANUAL = (
+    f"≥ {_MIN_ANIOS_CLIMA} años de registro y span ≥ {_MIN_DIAS_MULTI_ANUAL} días "
+    "(climatología, régimen extremo y Gumbel)")
+
+
+def _serie_usa_media_mensual(ds):
+    return _span_dias(ds) >= _MIN_DIAS_SERIE_MENSUAL
 
 
 # --- Resumen estadístico (panel de tabla) ---
@@ -51,16 +87,27 @@ def _dib_resumen(ax, r):
     ax.set_title(f"Resumen estadístico (N = {r['n']})")
 
 
-# --- Serie temporal de Hs (media mensual) ---
+# --- Serie temporal de Hs (nativa o media mensual según duración) ---
 def _calc_serie(ds):
-    mensual = ds["Hs"].resample(time="1MS").mean()
-    return {"t": mensual["time"].values, "hs": mensual.values}
+    if _serie_usa_media_mensual(ds):
+        mensual = ds["Hs"].resample(time="1MS").mean()
+        return {"t": mensual["time"].values, "hs": mensual.values, "modo": "mensual"}
+    return {"t": ds["time"].values, "hs": ds["Hs"].values, "modo": "nativa"}
 
 
 def _dib_serie(ax, r):
     ax.plot(r["t"], r["hs"], lw=0.8, color=AZUL)
-    ax.set_title("Serie temporal de Hs (media mensual)")
-    ax.set_xlabel("Año")
+    if r["modo"] == "nativa":
+        ax.set_title("Serie temporal de Hs")
+        ax.set_xlabel("Fecha")
+        ax.xaxis.set_major_formatter(mdates.DateFormatter("%Y-%m-%d"))
+        ax.xaxis.set_major_locator(mdates.AutoDateLocator())
+        for lb in ax.get_xticklabels():
+            lb.set_rotation(25)
+            lb.set_ha("right")
+    else:
+        ax.set_title("Serie temporal de Hs (media mensual)")
+        ax.set_xlabel("Año")
     ax.set_ylabel("Hs [m]")
     ax.grid(alpha=0.3)
 
@@ -84,12 +131,24 @@ def _dib_clima(ax, r):
 # --- Curva de excedencia de Hs ---
 def _calc_excedencia(ds):
     hs = np.sort(ds["Hs"].values)[::-1]
-    prob = np.arange(1, hs.size + 1) / hs.size * 100   # % de tiempo excedido
-    return {"hs": hs, "prob": prob}
+    hs = hs[np.isfinite(hs)]
+    if hs.size == 0:
+        raise ValueError("No hay Hs finitos para la curva de excedencia.")
+    prob = np.arange(1, hs.size + 1) / hs.size * 100
+    crudo = ds["Hs"].values
+    percentiles = {p: float(np.percentile(crudo, p)) for p in (50, 90, 99)}
+    return {"hs": hs, "prob": prob, "percentiles": percentiles}
 
 
 def _dib_excedencia(ax, r):
     ax.plot(r["prob"], r["hs"], color=AZUL)
+    colores_pct = {"50": "#6e7781", "90": "#bf8700", "99": "#d1242f"}
+    for p, hs in r["percentiles"].items():
+        prob_exc = 100.0 - p
+        ax.axhline(hs, color=colores_pct[str(p)], ls="--", lw=0.9, alpha=0.85)
+        ax.plot(prob_exc, hs, "o", color=colores_pct[str(p)], ms=4, zorder=3)
+        ax.annotate(f"P{p} = {hs:.2f} m", xy=(prob_exc, hs),
+                    xytext=(4, 4), textcoords="offset points", fontsize=7)
     ax.set_title("Curva de excedencia de Hs")
     ax.set_xlabel("Probabilidad de excedencia [%]")
     ax.set_ylabel("Hs [m]")
@@ -116,17 +175,15 @@ def _dib_extremos(ax, r):
 
 
 # --- Períodos de retorno: ajuste de Gumbel a los máximos anuales ---
-def _n_anios(ds):
-    """Número de años distintos con dato (tamaño de la serie de máximos anuales)."""
-    return int(ds["Hs"].groupby("time.year").max().sizes.get("year", 0))
-
-
 def _calc_retorno(ds, periodos=(2, 5, 10, 25, 50, 100)):
+    if not datos_suficientes_multi_anual(ds):
+        dias = int(_span_dias(ds))
+        n = _n_anios(ds)
+        raise ValueError(
+            f"El ajuste de Gumbel necesita ≥ {_MIN_ANIOS_CLIMA} años de registro "
+            f"y span ≥ {_MIN_DIAS_MULTI_ANUAL} días (hay {n} año(s), span {dias} d).")
     maximos = np.sort(ds["Hs"].groupby("time.year").max().values)
     n = maximos.size
-    # Con <2 máximos anuales el ajuste de Gumbel es degenerado (scale→0): la
-    # fit produce overflow/NaN y la curva no tiene sentido. Se exige ≥2 años,
-    # igual que borde_oleaje; 'evaluar' además lo marca como no disponible.
     if n < 2:
         raise ValueError(
             f"El ajuste de Gumbel necesita ≥ 2 años de máximos anuales (hay {n}).")
@@ -167,8 +224,13 @@ def _dib_retorno(ax, r):
 # --- Distribución de Hs con ajuste de Rayleigh ---
 def _calc_rayleigh(ds):
     hs = ds["Hs"].values
-    sigma = np.sqrt(np.mean(hs ** 2) / 2)              # escala de Rayleigh
-    x = np.linspace(0, hs.max(), 200)
+    hs = hs[np.isfinite(hs)]
+    if hs.size == 0 or np.all(hs <= 0):
+        raise ValueError("No hay Hs positivos para el ajuste de Rayleigh.")
+    sigma = np.sqrt(np.mean(hs ** 2) / 2)
+    if sigma <= 0:
+        raise ValueError("La escala de Rayleigh es cero.")
+    x = np.linspace(0, max(hs.max(), 0.01), 200)
     pdf = (x / sigma ** 2) * np.exp(-x ** 2 / (2 * sigma ** 2))
     return {"hs": hs, "x": x, "pdf": pdf, "sigma": sigma}
 
@@ -210,12 +272,13 @@ def _dib_rosa(ax, r):
     colores = plt.cm.viridis(np.linspace(0, 1, len(clases) - 1))
     ancho = 2 * np.pi / n_sec
     centros = np.deg2rad((bordes[:-1] + bordes[1:]) / 2)
+    n_total = max(int(np.isfinite(r["hs"]).sum()), 1)
 
     fondo = np.zeros(n_sec)
     for i in range(len(clases) - 1):
         mask = (r["hs"] >= clases[i]) & (r["hs"] < clases[i + 1])
         conteo, _ = np.histogram(r["dir"][mask], bins=bordes)
-        frec = conteo / r["hs"].size * 100               # % de ocurrencia
+        frec = conteo / n_total * 100
         etiqueta = (f"{clases[i]:.0f}–{clases[i + 1]:.0f} m"
                     if np.isfinite(clases[i + 1]) else f"> {clases[i]:.0f} m")
         ax.bar(centros, frec, width=ancho, bottom=fondo, color=colores[i],
@@ -233,6 +296,8 @@ def _dib_rosa(ax, r):
 def _calc_jonswap(ds):
     hs = float(ds["Hs"].mean())
     tp = float(ds["Tp"].mean())
+    if not np.isfinite(tp) or tp <= 0:
+        raise ValueError("Tp medio inválido para reconstruir JONSWAP.")
     fp = 1.0 / tp
     f = np.linspace(0.3 * fp, 3.0 * fp, 300)
     gamma = 3.3
@@ -261,15 +326,19 @@ PRODUCTOS = [
     {"nombre": "Serie temporal de Hs", "requiere": ["Hs"], "proyeccion": None,
      "calcular": _calc_serie, "dibujar": _dib_serie},
     {"nombre": "Climatología mensual", "requiere": ["Hs"], "proyeccion": None,
-     "calcular": _calc_clima, "dibujar": _dib_clima},
+     "calcular": _calc_clima, "dibujar": _dib_clima,
+     "aplicable": datos_suficientes_multi_anual,
+     "motivo_inaplicable": _MOTIVO_MULTI_ANUAL},
     {"nombre": "Curva de excedencia", "requiere": ["Hs"], "proyeccion": None,
      "calcular": _calc_excedencia, "dibujar": _dib_excedencia},
     {"nombre": "Régimen extremo (máx. anual)", "requiere": ["Hs"], "proyeccion": None,
-     "calcular": _calc_extremos, "dibujar": _dib_extremos},
+     "calcular": _calc_extremos, "dibujar": _dib_extremos,
+     "aplicable": datos_suficientes_multi_anual,
+     "motivo_inaplicable": _MOTIVO_MULTI_ANUAL},
     {"nombre": "Períodos de retorno (Gumbel)", "requiere": ["Hs"], "proyeccion": None,
      "calcular": _calc_retorno, "dibujar": _dib_retorno,
-     "aplicable": lambda ds: _n_anios(ds) >= 2,
-     "motivo_inaplicable": "≥ 2 años de datos para el ajuste de Gumbel"},
+     "aplicable": datos_suficientes_multi_anual,
+     "motivo_inaplicable": _MOTIVO_MULTI_ANUAL},
     {"nombre": "Distribución de Hs (Rayleigh)", "requiere": ["Hs"], "proyeccion": None,
      "calcular": _calc_rayleigh, "dibujar": _dib_rayleigh},
     {"nombre": "Histograma conjunto Hs–Tp", "requiere": ["Hs", "Tp"], "proyeccion": None,
@@ -305,10 +374,17 @@ def evaluar(ds):
         if not faltan and aplicable_fn is not None and not aplicable_fn(ds):
             faltan = [p.get("motivo_inaplicable", "datos insuficientes")]
         disponible = (not faltan) and (p["calcular"] is not None)
+        resultado = None
+        if disponible:
+            try:
+                resultado = p["calcular"](ds)
+            except (ValueError, ZeroDivisionError, FloatingPointError):
+                disponible = False
+                faltan = [p.get("motivo_inaplicable", "datos insuficientes")]
         informe.append({
             "nombre": p["nombre"], "disponible": disponible, "faltan": faltan,
             "proyeccion": p["proyeccion"], "dibujar": p["dibujar"],
-            "resultado": p["calcular"](ds) if disponible else None,
+            "resultado": resultado,
         })
     return informe
 

@@ -75,6 +75,10 @@ def construir_dataset(df, atributos_globales=None):
     DataFrame: esa es la base del comportamiento adaptativo del pipeline.
     """
     tiempo = _columna_tiempo(df)
+    if tiempo.isnull().any():
+        n = int(tiempo.isnull().sum())
+        raise ValueError(
+            f"La serie tiene {n} fecha(s) inválida(s); revisa año/mes/día/hora.")
     presentes = [v for v in ATRIBUTOS_VARIABLES if v in df.columns]
 
     ds = xr.Dataset(
@@ -99,6 +103,8 @@ def cargar(ruta, variable_mat="DataTarea", mapeo_csv=None):
     - .csv : columnas canónicas, o renombradas con 'mapeo_csv'.
     """
     ruta = Path(ruta)
+    if not ruta.is_file():
+        raise FileNotFoundError(f"No se encuentra el archivo: {ruta}")
     extension = ruta.suffix.lower()
 
     if extension == ".nc":
@@ -107,6 +113,10 @@ def cargar(ruta, variable_mat="DataTarea", mapeo_csv=None):
         df = _leer_mat(ruta, variable=variable_mat)
     elif extension == ".csv":
         df = _leer_csv(ruta, mapeo=mapeo_csv)
+        faltan = [c for c in COLUMNAS_TIEMPO + ["Hs"] if c not in df.columns]
+        if faltan:
+            raise ValueError(
+                f"El CSV no tiene columnas requeridas: {', '.join(faltan)}.")
     else:
         raise ValueError(f"Extensión no soportada: {extension}")
 

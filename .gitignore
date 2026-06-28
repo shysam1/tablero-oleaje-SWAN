@@ -14,3 +14,6 @@ config.json
 
 # Logs de runtime del lanzador/app web (depuración, no código)
 *.log
+
+# Paquetes zip generados para entrega a clientes
+dist/

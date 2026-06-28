@@ -200,6 +200,9 @@ def animar_multipanel(corrida, salida=None, fps=12, formato="auto", paso=1,
     punto de mayor variabilidad de Hs (genérico para cualquier corrida).
     """
     dom = corrida["dominios"]
+    if "large" not in dom or "Hs" not in dom["large"]:
+        raise ValueError(
+            "La corrida no incluye Hs en el dominio grande; no se puede animar.")
     large = dom["large"].isel(time=slice(None, None, paso))
     n1 = dom.get("n1")
     if n1 is not None:

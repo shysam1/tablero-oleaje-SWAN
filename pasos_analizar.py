@@ -7,7 +7,6 @@ Pasos del camino "Analizar oleaje en un punto".
 Reutiliza io_era5 / io_oleaje / validacion / productos / tablero_oleaje / rutas.
 """
 
-import os
 from pathlib import Path
 import tkinter as tk
 from tkinter import ttk, filedialog, messagebox
@@ -15,6 +14,7 @@ from tkinter import ttk, filedialog, messagebox
 import asistente
 import config
 import rutas
+import sistema
 import io_era5
 import io_oleaje
 import validacion
@@ -91,17 +91,19 @@ class PasoOrigen(asistente.Paso):
         try:
             lat = float(self.campos["lat"].get()); lon = float(self.campos["lon"].get())
             inicio = self.campos["inicio"].get(); fin = self.campos["fin"].get()
-            if not (inicio and fin):
-                raise ValueError("Faltan fechas de inicio/fin.")
+            io_era5.validar_rango_fechas(inicio, fin)
         except ValueError as e:
             messagebox.showerror("Datos inválidos", str(e)); return
 
         def trabajo(log, progreso):
             ds = io_era5.descargar_serie(lat, lon, inicio, fin,
                                          incluir_viento=self.viento.get())
-            log(f"Serie ERA5 descargada: {ds.sizes.get('time', 0)} pasos.")
-            carpeta = rutas.carpeta_salida(io_era5._nombre_fuente(lat, lon, "serie"))
-            return str(carpeta / "era5_serie.nc")
+            try:
+                log(f"Serie ERA5 descargada: {ds.sizes.get('time', 0)} pasos.")
+            finally:
+                ds.close()
+            carpeta, nc = io_era5.ruta_cache_serie(lat, lon, inicio, fin)
+            return str(nc)
 
         def al_terminar(nc):
             if nc is None:
@@ -144,35 +146,36 @@ class PasoRevision(asistente.Paso):
         self._motivo = "Revisa los datos antes de continuar."
         try:
             ds = io_oleaje.cargar(contexto["ruta_datos"])
-            variables = ", ".join(ds.data_vars) or "(ninguna)"
-            n = int(ds.sizes.get("time", 0))
-            self.texto.insert("end", f"Variables presentes: {variables}\n")
-            self.texto.insert("end", f"Pasos de tiempo: {n}\n\n")
-            self.texto.insert("end", "Validación física:\n")
-            for r in validacion.validar(ds):
-                if not r["aplicable"]:
-                    self.texto.insert("end", f"  [n/a] {r['nombre']}: {r['detalle']}\n")
-                elif r["n_falla"] == 0:
-                    self.texto.insert("end", f"  [ok ] {r['nombre']}\n")
+            try:
+                variables = ", ".join(ds.data_vars) or "(ninguna)"
+                n = int(ds.sizes.get("time", 0))
+                self.texto.insert("end", f"Variables presentes: {variables}\n")
+                self.texto.insert("end", f"Pasos de tiempo: {n}\n\n")
+                self.texto.insert("end", "Validación física:\n")
+                for r in validacion.validar(ds):
+                    if not r["aplicable"]:
+                        self.texto.insert("end", f"  [n/a] {r['nombre']}: {r['detalle']}\n")
+                    elif r["n_falla"] == 0:
+                        self.texto.insert("end", f"  [ok ] {r['nombre']}\n")
+                    else:
+                        self.texto.insert("end",
+                                          f"  [!! ] {r['nombre']}: {r['n_falla']}/{r['n_total']}\n")
+                self.texto.insert("end", "\nProductos que se podrán generar:\n")
+                hay_producto = False
+                for it in productos.evaluar(ds):
+                    if it["disponible"]:
+                        hay_producto = True
+                        self.texto.insert("end", f"  ✓ {it['nombre']}\n")
+                    else:
+                        self.texto.insert("end",
+                                          f"  ✗ {it['nombre']} (faltan: {', '.join(it['faltan'])})\n")
+                if hay_producto:
+                    self._listo = True
                 else:
-                    self.texto.insert("end",
-                                      f"  [!! ] {r['nombre']}: {r['n_falla']}/{r['n_total']}\n")
-            self.texto.insert("end", "\nProductos que se podrán generar:\n")
-            hay_producto = False
-            for it in productos.evaluar(ds):
-                if it["disponible"]:
-                    hay_producto = True
-                    self.texto.insert("end", f"  ✓ {it['nombre']}\n")
-                else:
-                    self.texto.insert("end",
-                                      f"  ✗ {it['nombre']} (faltan: {', '.join(it['faltan'])})\n")
-            # Solo se avanza si los datos cargaron y dejan generar algún producto;
-            # de lo contrario tablero_oleaje lanzaría ValueError (sin productos).
-            if hay_producto:
-                self._listo = True
-            else:
-                self._motivo = ("Los datos no permiten generar ningún producto. "
-                                "Vuelve atrás y elige otro origen.")
+                    self._motivo = ("Los datos no permiten generar ningún producto. "
+                                    "Vuelve atrás y elige otro origen.")
+            finally:
+                ds.close()
         except Exception as e:
             self.texto.insert("end", f"Error al analizar el archivo:\n{e}\n")
             self._motivo = ("No se pudieron cargar los datos. "
@@ -211,7 +214,7 @@ class PasoTablero(asistente.Paso):
             self.resultado = res
             self.wizard.log.insert("end", f"Resultado: {res}\n")
             try:
-                os.startfile(str(res))
+                sistema.abrir_archivo(res)
             except Exception as e:
                 self.wizard.log.insert("end", f"No se pudo abrir {res}: {e}\n")
 

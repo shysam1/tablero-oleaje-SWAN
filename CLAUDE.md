@@ -46,8 +46,8 @@ decisiones de diseño.
 
 | Qué | Dónde |
 |-----|--------|
-| UI principal | `app_web.py` + `ui/` (pywebview) |
-| Respaldo tkinter | `app_tablero.py`, `asistente.py` |
+| UI principal | `app_web.py` + `ui/` (pywebview) — **única interfaz de usuario** |
+| Código tk obsoleto | `app_tablero.py`, `asistente.py`, `pasos_*.py`, `gui_swan.py` (tests; no ampliar) |
 | Puente web | `api_web.py`, `motor_web.py` |
 | Motor SWAN/oleaje | `tablero_oleaje.py`, `swan_runner.py`, `pasos_*.py` |
 | Lanzador usuario | `Tablero de Oleaje.lnk` (en carpeta del repo) → `python.exe app_web.py --gui` |

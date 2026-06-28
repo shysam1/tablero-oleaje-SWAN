@@ -13,19 +13,13 @@ línea a línea para mostrarlo en la GUI.
 """
 
 from pathlib import Path
-import re
 import shutil
 import subprocess
 import sys
 import threading
 
 import prioridad
-
-# Caracteres permitidos en el nombre de un caso SWAN (stem del .swn). Es una
-# lista blanca deliberadamente estrecha: letras, números, espacio y unos pocos
-# separadores. Cualquier otro carácter (comillas, &, |, >, etc.) se rechaza para
-# que el nombre no pueda inyectar comandos al lanzar el proceso.
-_NOMBRE_CASO_OK = re.compile(r"^[A-Za-z0-9 ._-]+$")
+import seguridad
 
 
 def swan_disponible():
@@ -39,10 +33,29 @@ def _validar_nombre_caso(caso):
     Lanza ValueError si contiene caracteres fuera de la lista blanca (defensa
     contra inyección de comandos a través del nombre del .swn).
     """
-    if not caso or not _NOMBRE_CASO_OK.match(caso):
-        raise ValueError(
-            f"Nombre de caso SWAN no válido: {caso!r}. Usa solo letras, números, "
-            "espacios, guiones, guiones bajos y puntos.")
+    return seguridad.sanitizar_nombre_caso(caso)
+
+
+def matar_proceso_arbol(proc):
+    """Termina el proceso y sus hijos (p. ej. swan.exe bajo cmd/swanrun)."""
+    if proc is None or proc.poll() is not None:
+        return
+    try:
+        if sys.platform == "win32":
+            subprocess.run(
+                ["taskkill", "/F", "/T", "/PID", str(proc.pid)],
+                capture_output=True, check=False)
+        else:
+            proc.terminate()
+            try:
+                proc.wait(timeout=8)
+            except subprocess.TimeoutExpired:
+                proc.kill()
+    except Exception:
+        try:
+            proc.kill()
+        except Exception:
+            pass
 
 
 def _es_nido(ruta_swn):
@@ -100,7 +113,8 @@ def verificar_inputs(carpeta, caso):
     carpeta = Path(carpeta)
     faltan = []
     for ref in _refs_input(carpeta / f"{caso}.swn"):
-        if not (carpeta / ref).exists():
+        ruta = seguridad.referencia_swan_segura(carpeta, ref)
+        if ruta is None:
             faltan.append(ref)
     return faltan
 
@@ -112,7 +126,7 @@ def correr_caso(carpeta, caso, log=None, on_proc=None):
     Devuelve True si SWAN terminó normalmente (genera el archivo `norm_end`).
     """
     carpeta = Path(carpeta)
-    _validar_nombre_caso(caso)
+    caso = _validar_nombre_caso(caso)
     if log:
         log(f"=== Corriendo SWAN: {caso} ===")
     # `norm_end` es un ÚNICO archivo por carpeta que SWAN (re)escribe al terminar
@@ -146,15 +160,19 @@ def correr_caso(carpeta, caso, log=None, on_proc=None):
                             text=True, bufsize=1, creationflags=flags)
     if on_proc:
         on_proc(proc)
-    # El opt-out de EcoQoS no se hereda: hay que aplicarlo a swan.exe en cuanto
-    # exista. Un hilo lo espera y lo protege para que minimizar la ventana no
-    # baje la frecuencia del núcleo (SWAN es monohilo) y enlentezca la corrida.
-    threading.Thread(target=prioridad.proteger_swan, kwargs={"log": log},
-                     daemon=True).start()
+    launcher_pid = getattr(proc, "pid", None)
+    if launcher_pid is not None:
+        threading.Thread(
+            target=prioridad.proteger_swan,
+            kwargs={"launcher_pid": launcher_pid, "log": log},
+            daemon=True).start()
     for linea in proc.stdout:
         if log:
             log(linea.rstrip())
     proc.wait()
+    rc = getattr(proc, "returncode", 0)
+    if rc and log:
+        log(f"[aviso] swanrun terminó con código {rc}.")
 
     # norm_end refleja SÓLO este caso (se borró antes de correr); un `.erf` de este
     # caso marca terminación con errores aunque norm_end exista. Ambos cuentan para
@@ -189,20 +207,27 @@ def correr_swan(carpeta, log=None, progreso=None, on_proc=None, cancelado=None):
     if not casos:
         raise RuntimeError(f"No hay archivos .swn en {carpeta}")
 
-    # swanrun.bat parte el nombre del caso en el primer espacio; avisar.
-    con_espacios = [c for c in casos if " " in c]
-    if con_espacios and log:
-        log(f"[aviso] Nombres con espacios pueden fallar en swanrun: "
-            f"{', '.join(con_espacios)}")
+    invalidos = []
+    for c in casos:
+        try:
+            _validar_nombre_caso(c)
+        except ValueError:
+            invalidos.append(c)
+    if invalidos:
+        raise RuntimeError(
+            "Nombres de caso SWAN no válidos (sin espacios ni caracteres raros): "
+            f"{', '.join(invalidos)}")
 
     antes = {p.name for p in carpeta.glob("*.txt")} | \
             {p.name for p in carpeta.glob("*.mat")}
 
     ok_global = True
+    cancelado_por_usuario = False
     for i, caso in enumerate(casos):
         if cancelado and cancelado():
             if log:
                 log("Corrida cancelada por el usuario.")
+            cancelado_por_usuario = True
             break
         if progreso:
             progreso(i, len(casos))
@@ -222,6 +247,8 @@ def correr_swan(carpeta, log=None, progreso=None, on_proc=None, cancelado=None):
     nuevas = sorted(despues - antes)
     if log:
         log(f"\nSalidas generadas: {len(nuevas)} archivo(s).")
+    if cancelado_por_usuario:
+        return False, nuevas
     return ok_global, nuevas
 
 

@@ -13,7 +13,6 @@ Pasos del camino "Modelar propagación con SWAN" (1 o 2 dominios).
 `contexto["dominios"]` es una lista de 1 o 2 dicts de dominio.
 """
 
-import os
 from pathlib import Path
 import tkinter as tk
 from tkinter import ttk, filedialog, messagebox
@@ -21,8 +20,10 @@ from tkinter import ttk, filedialog, messagebox
 import asistente
 import config
 import geo_malla
+import sistema
 import io_batimetria
 import io_oleaje
+import io_swan
 import borde_oleaje
 import gui_swan
 import swan_builder
@@ -197,24 +198,34 @@ class PasoBorde(asistente.Paso):
         if not cond:
             return
         modo, tr = cond
+        ds = None
+        borde = None
         try:
             ds = io_oleaje.cargar(r)
             borde = borde_oleaje.condicion_borde(ds, modo, tr)
         except Exception as e:
             messagebox.showerror("No se pudo derivar el borde", str(e)); return
+        finally:
+            if ds is not None:
+                ds.close()
+        if borde is None:
+            return
         for clave in ("hs", "per", "dir"):
             val = borde.get(clave)
             self.v[clave].set("" if val is None else f"{val:g}")
         self.wizard.log.insert("end", f"Borde derivado — {borde.get('descripcion','')}\n")
 
     def validar(self):
+        import math
         try:
             hs = float(self.v["hs"].get()); per = float(self.v["per"].get())
-            float(self.v["dir"].get()); float(self.v["dd"].get())
+            dir_ = float(self.v["dir"].get()); float(self.v["dd"].get())
         except ValueError:
             return False, "Revisa los valores del borde (deben ser números)."
-        if hs <= 0 or per <= 0:
-            return False, "Hs y Tp deben ser mayores que cero."
+        if not (math.isfinite(hs) and hs > 0 and math.isfinite(per) and per > 0):
+            return False, "Hs y Tp deben ser números finitos mayores que cero."
+        if not (math.isfinite(dir_) and 0 <= dir_ <= 360):
+            return False, "La dirección debe estar entre 0° y 360°."
         if not any(v.get() for v in self.lados.values()):
             return False, "Elige al menos un lado de entrada del oleaje."
         return True, ""
@@ -366,6 +377,8 @@ class PasoNido(asistente.Paso):
 
     def recoger(self, contexto):
         if not self.activo.get():
+            if len(contexto.get("dominios", [])) > 1:
+                contexto["dominios"] = contexto["dominios"][:1]
             return
         dom = {"malla": self.malla, "bot": self.bot.get().strip()}
         if self.con_espectro.get():
@@ -383,7 +396,11 @@ class PasoNido(asistente.Paso):
                     "No se pudo convertir el punto espectral a UTM; "
                     "se omitirá la salida espectral del nido.")
                 dom["punto_espectral"] = None
-        contexto["dominios"].append(dom)
+        dominios = contexto.setdefault("dominios", [{}])
+        if len(dominios) >= 2:
+            dominios[1] = dom
+        else:
+            dominios.append(dom)
 
 
 class PasoCorrer(asistente.Paso):
@@ -421,15 +438,16 @@ class PasoCorrer(asistente.Paso):
         destino = Path(ctx["carpeta_caso"])
         nombre = self.nombre.get().strip() or "MiCaso"
         bot_g = Path(g["bot"])
-        if bot_g.parent != destino:
-            (destino / bot_g.name).write_bytes(bot_g.read_bytes())
         malla_g = {k: v for k, v in g["malla"].items() if k != "zona_utm"}
         bordes = g["bordes"]
 
-        errores, avisos = swan_builder.validar_caso(
-            malla_g, {"archivo": bot_g.name}, bordes, carpeta=destino)
-
         anidado = len(dominios) >= 2
+        import motor_web
+        bot_g_nom = motor_web._nombre_bot_en_caso(anidado) or bot_g.name
+        errores, avisos = swan_builder.validar_caso(
+            malla_g, {"archivo": bot_g_nom, "ruta": str(bot_g)}, bordes,
+            carpeta=destino)
+
         if anidado:
             n = dominios[1]
             if any(k not in n for k in ("malla", "bot")):
@@ -437,15 +455,14 @@ class PasoCorrer(asistente.Paso):
                                      "Completa malla y batimetría del nido.")
                 return
             bot_n = Path(n["bot"])
-            if bot_n.parent != destino:
-                (destino / bot_n.name).write_bytes(bot_n.read_bytes())
             malla_n = {k: v for k, v in n["malla"].items() if k != "zona_utm"}
+            bot_n_nom = motor_web._nombre_bot_en_caso(anidado, es_nido=True)
             e_an, a_an = swan_builder.validar_caso_anidado(g["malla"], n["malla"])
             errores += e_an
             avisos += a_an
             e_n, a_n = swan_builder.validar_caso(
-                malla_n, {"archivo": bot_n.name}, [], carpeta=destino,
-                requiere_bordes=False)
+                malla_n, {"archivo": bot_n_nom, "ruta": str(bot_n)}, [],
+                carpeta=destino, requiere_bordes=False)
             errores += e_n
             avisos += a_n
 
@@ -455,11 +472,23 @@ class PasoCorrer(asistente.Paso):
                 "Advertencias", "\n\n".join(avisos) + "\n\n¿Continuar igual?"):
             return
 
+        def _copiar(origen, alias=None):
+            nombre = alias or origen.name
+            dest = destino / nombre
+            if dest.resolve() != origen.resolve():
+                dest.write_bytes(origen.read_bytes())
+            return nombre
+
+        bot_g_nom = _copiar(bot_g, motor_web._nombre_bot_en_caso(anidado))
+        if anidado:
+            bot_n = Path(dominios[1]["bot"])
+            bot_n_nom = _copiar(bot_n, motor_web._nombre_bot_en_caso(anidado, es_nido=True))
+
         if anidado:
             ruta_g, ruta_n = swan_builder.escribir_par_anidado(
                 destino, nombre, nombre + "_nido",
-                malla_g, {"archivo": bot_g.name}, bordes,
-                malla_n, {"archivo": Path(n["bot"]).name},
+                malla_g, {"archivo": bot_g_nom}, bordes,
+                malla_n, {"archivo": bot_n_nom},
                 salidas=("Hs", "Tp", "Dir"),
                 punto_espectral=n.get("punto_espectral"))
             self.wizard.log.insert("end",
@@ -467,9 +496,17 @@ class PasoCorrer(asistente.Paso):
         else:
             ruta_swn = swan_builder.escribir_caso(
                 destino, nombre, nombre=nombre, malla=malla_g,
-                batimetria={"archivo": bot_g.name}, bordes=bordes,
+                batimetria={"archivo": bot_g_nom}, bordes=bordes,
                 salidas=("Hs", "Tp", "Dir"), estacionario=True)
             self.wizard.log.insert("end", f"Caso generado: {ruta_swn}\n")
+
+        ui = g.get("malla_ui") or {}
+        io_swan.guardar_meta_caso(
+            destino, malla_g,
+            zona_utm=g.get("zona_utm"),
+            lat_centro=ui.get("lat"),
+            lon_centro=ui.get("lon"),
+        )
 
         def trabajo(log, progreso):
             ok, _ = swan_runner.correr_swan(str(destino), log=log, progreso=progreso)
@@ -525,7 +562,7 @@ class PasoVer(asistente.Paso):
             self.resultado = res
             self.wizard.log.insert("end", f"Resultado: {res}\n")
             try:
-                os.startfile(str(res))
+                sistema.abrir_archivo(res)
             except Exception as e:
                 self.wizard.log.insert("end", f"No se pudo abrir {res}: {e}\n")
 

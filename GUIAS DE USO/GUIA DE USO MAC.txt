@@ -1,0 +1,266 @@
+================================================================================
+  TABLERO DE OLEAJE — GUÍA DE USO PARA macOS
+================================================================================
+
+Esta guía está pensada para quien usa la aplicación en Mac (Intel o Apple
+Silicon: M1, M2, M3, M4). No hace falta ser programador: basta seguir los pasos
+en orden.
+
+
+--------------------------------------------------------------------------------
+1. QUÉ NECESITAS ANTES DE EMPEZAR
+--------------------------------------------------------------------------------
+
+  - Un Mac con macOS 12 Monterey o más reciente (recomendado 13 o superior).
+  - Python 3.11 o superior instalado en el Mac.
+  - Conexión a internet la primera vez que abras la app (para instalar librerías).
+  - Unos 500 MB libres en disco (entorno virtual y dependencias).
+
+Opcional (solo si vas a usar esas funciones):
+
+  - SWAN instalado y el comando "swanrun" disponible → para CORRER modelos
+    desde la app. Sin SWAN igual puedes ver resultados de corridas ya hechas.
+  - ffmpeg instalado → videos en MP4. Sin ffmpeg la app genera GIF.
+  - Cuenta gratuita en Copernicus CDS → descargas ERA5 desde la app.
+
+
+--------------------------------------------------------------------------------
+2. INSTALAR PYTHON (SI AÚN NO LO TIENES)
+--------------------------------------------------------------------------------
+
+Opción A — Instalador oficial (la más simple para la mayoría)
+
+  1. Abre el navegador y entra a:
+     https://www.python.org/downloads/macos/
+  2. Descarga e instala la versión recomendada (3.11 o 3.12).
+  3. Si el instalador pregunta, marca la opción de añadir Python al PATH.
+
+Opción B — Con Homebrew (si ya usas brew)
+
+  1. Abre la app Terminal (Aplicaciones > Utilidades > Terminal).
+  2. Escribe y pulsa Enter:
+       brew install python@3.12
+
+Comprobar que Python está bien instalado:
+
+  1. En Terminal escribe:
+       python3 --version
+  2. Debe aparecer algo como "Python 3.11.x" o "Python 3.12.x".
+     Si dice "command not found", repite la instalación de Python.
+
+
+--------------------------------------------------------------------------------
+3. COLOCAR LA APLICACIÓN EN TU MAC
+--------------------------------------------------------------------------------
+
+  1. Copia la carpeta completa "Tablero Oleaje" al Mac (USB, correo, Drive, etc.).
+  2. Déjala en un sitio fijo, por ejemplo:
+       Documentos/Tablero Oleaje
+  3. Dentro de esa carpeta debes ver, entre otros, estos archivos:
+       LEEME PRIMERO.txt
+       iniciar_mac.command
+       app_web.py
+       requirements.txt
+       GUIAS DE USO/   (carpeta con esta guía y la de Windows)
+
+
+--------------------------------------------------------------------------------
+4. PRIMERA VEZ: PERMITIR QUE macOS EJECUTE EL LANZADOR
+--------------------------------------------------------------------------------
+
+macOS suele bloquear scripts descargados de internet. Haz esto SOLO LA PRIMERA VEZ:
+
+  Método 1 — Desde Finder (recomendado)
+
+    1. Abre la carpeta del proyecto en Finder.
+    2. Busca el archivo "iniciar_mac.command".
+    3. Clic derecho sobre él → Abrir.
+    4. Cuando pregunte si confías en el archivo, pulsa Abrir.
+
+  Método 2 — Desde Terminal (si Finder no deja abrirlo)
+
+    1. Abre Terminal.
+    2. Ve a la carpeta del proyecto (cambia la ruta por la tuya):
+         cd "/Users/TUNOMBRE/Documentos/Tablero Oleaje"
+    3. Ejecuta estos dos comandos, uno tras otro:
+         xattr -dr com.apple.quarantine .
+         chmod +x iniciar_mac.command
+
+  Método 3 — Solo falta permiso de ejecución
+
+    En Terminal, dentro de la carpeta del proyecto:
+         chmod +x iniciar_mac.command
+
+
+--------------------------------------------------------------------------------
+5. CÓMO ABRIR LA APLICACIÓN (USO DIARIO)
+--------------------------------------------------------------------------------
+
+  1. Abre la carpeta "Tablero Oleaje" en Finder.
+  2. Haz doble clic en "iniciar_mac.command".
+
+Qué hace ese archivo por ti (no tienes que hacer nada más):
+
+  - Crea un entorno Python privado en la subcarpeta ".venv" (solo la 1.ª vez).
+  - Instala o actualiza las librerías necesarias.
+  - Abre la ventana de Tablero de Oleaje.
+
+La primera apertura puede tardar varios minutos mientras se descargan paquetes.
+Las siguientes veces será mucho más rápido.
+
+Si prefieres usar Terminal en lugar de doble clic:
+
+  cd "/Users/TUNOMBRE/Documentos/Tablero Oleaje"
+  ./iniciar_mac.command
+
+
+--------------------------------------------------------------------------------
+6. QUÉ PUEDES HACER CON LA APLICACIÓN
+--------------------------------------------------------------------------------
+
+Al abrirse verás una pantalla de inicio con tres caminos principales:
+
+  ANALIZAR OLEAJE EN UN PUNTO
+    Carga series de datos (.mat, .csv, .nc) o descarga ERA5.
+    Revisa la calidad de los datos y genera tableros de curvas.
+
+  MODELAR PROPAGACIÓN CON SWAN
+    Define malla, batimetría y condiciones de borde.
+    Arma y corre (si tienes SWAN) un modelo de oleaje.
+    Genera tableros de mapas.
+
+  VER UNA CORRIDA SWAN YA HECHA
+    Elige una carpeta con resultados SWAN.
+    La app detecta si generar mapas (estacionario) o video (no estacionario).
+
+También hay un enlace a "Herramientas sueltas (modo avanzado)" con más opciones.
+
+Atajos de teclado dentro de la app:
+
+  Enter .............. Siguiente paso
+  Esc ................ Paso anterior
+  Ctrl + L ........... Limpiar el registro de mensajes (log)
+
+Dónde se guardan tus resultados:
+
+  Todos los archivos generados (PNG, videos, etc.) quedan en la carpeta:
+    salidas/
+  dentro del proyecto. Cada fuente de datos tiene su subcarpeta.
+
+
+--------------------------------------------------------------------------------
+7. CREDENCIALES ERA5 (DESCARGA DE DATOS DE OLEAJE)
+--------------------------------------------------------------------------------
+
+Si vas a descargar datos ERA5 desde la app:
+
+  1. Crea una cuenta gratuita en:
+       https://cds.climate.copernicus.eu/
+  2. En tu perfil de CDS, copia tu URL de API y tu clave (UID:API-KEY).
+  3. Puedes configurarlas desde la propia aplicación (Ajustes / credenciales CDS).
+
+Si prefieres hacerlo a mano, crea el archivo (en tu carpeta de usuario):
+
+  ~/.cdsapirc
+
+con este contenido (sustituye UID y API-KEY por los tuyos):
+
+  url: https://cds.climate.copernicus.eu/api
+  key: UID:API-KEY
+
+
+--------------------------------------------------------------------------------
+8. PROBLEMAS FRECUENTES Y CÓMO RESOLVERLOS
+--------------------------------------------------------------------------------
+
+--- "No se encontró Python 3" al abrir iniciar_mac.command ---
+
+  Instala Python como se explica en la sección 2 y vuelve a intentar.
+
+
+--- macOS dice que el archivo es de un desarrollador no identificado ---
+
+  Clic derecho en iniciar_mac.command → Abrir → Abrir.
+  O usa el Método 2 de la sección 4 (xattr y chmod).
+
+
+--- Error al instalar netCDF4 ---
+
+  Algunos Mac necesitan librerías del sistema antes. En Terminal:
+
+    brew install hdf5 netcdf
+    cd "/Users/TUNOMBRE/Documentos/Tablero Oleaje"
+    source .venv/bin/activate
+    pip install netCDF4
+
+  En Mac con chip Apple (M1/M2/M3), usa Python nativo ARM, no bajo Rosetta.
+
+
+--- La ventana no abre o se queda en blanco ---
+
+  1. Mira si hay errores en el archivo de registro:
+       salidas/app_web.log
+  2. Abre la app desde Terminal para ver mensajes en pantalla:
+       cd "/Users/TUNOMBRE/Documentos/Tablero Oleaje"
+       source .venv/bin/activate
+       python app_web.py --gui
+  3. Si sigue fallando, actualiza dependencias:
+       source .venv/bin/activate
+       pip install -U -r requirements.txt
+
+
+--- Mensaje "Falta pywebview" ---
+
+  En Terminal, dentro de la carpeta del proyecto:
+
+    source .venv/bin/activate
+    pip install pywebview
+
+
+--- La descarga ERA5 falla ---
+
+  Revisa que las credenciales CDS estén bien (sección 7).
+  Comprueba que tienes internet y que la clave no haya caducado en CDS.
+
+
+--- "No se encontró swanrun" ---
+
+  La app puede graficar carpetas SWAN ya corridas SIN tener SWAN instalado.
+  Solo necesitas SWAN si quieres EJECUTAR modelos desde la app.
+  SWAN se instala aparte; después debe estar el comando "swanrun" en el PATH.
+
+
+--- Quiero videos MP4 en lugar de GIF ---
+
+  Instala ffmpeg, por ejemplo con Homebrew:
+    brew install ffmpeg
+
+
+--------------------------------------------------------------------------------
+9. ARCHIVOS IMPORTANTES DE LA CARPETA
+--------------------------------------------------------------------------------
+
+  iniciar_mac.command .... Abrir la app (doble clic)
+  GUIA DE USO MAC.txt .... Esta guía
+  app_web.py ............. Programa principal (no hace falta abrirlo a mano)
+  requirements.txt ....... Lista de librerías Python (las instala el lanzador)
+  ui/ .................... Interfaz visual de la aplicación
+  salidas/ ............... Aquí aparecen tus resultados
+  .venv/ ................. Entorno Python (se crea solo; no borrar)
+
+
+--------------------------------------------------------------------------------
+10. SI NECESITAS AYUDA AL DESARROLLADOR
+--------------------------------------------------------------------------------
+
+Indica:
+
+  - Versión de macOS (Menú Apple > Acerca de este Mac).
+  - Si tu Mac es Intel o Apple Silicon (M1/M2/M3/M4).
+  - Qué pasos seguiste y qué mensaje de error apareció.
+  - Si puedes, copia la salida de Terminal al ejecutar ./iniciar_mac.command
+  - Y, si existe, el contenido relevante de salidas/app_web.log
+
+================================================================================
+  Fin de la guía — Tablero de Oleaje
+================================================================================

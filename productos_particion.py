@@ -59,7 +59,12 @@ def dibujar_polar(ax, espectro, meta=None):
     Espectro S(f,θ) polar de un paso (el de mayor energía), con cada familia
     marcada por la dirección/frecuencia de su pico y color por tipo.
     """
-    esp = espectro.isel(time=0) if "time" in espectro.dims else espectro
+    if "time" in espectro.dims:
+        energia_t = espectro["Efth"].sum(dim=[d for d in espectro["Efth"].dims
+                                               if d != "time"])
+        esp = espectro.isel(time=int(energia_t.argmax()))
+    else:
+        esp = espectro
     freqs = esp["freq"].values
     dirs = esp["dir"].values
     densidad = np.nan_to_num(esp["Efth"].values)

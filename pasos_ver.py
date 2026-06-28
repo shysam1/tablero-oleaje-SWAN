@@ -8,13 +8,14 @@ Pasos del camino "Ver una corrida SWAN ya hecha".
 Reutiliza tablero_swan / video_swan / io_swan_nonst sin tocar el motor.
 """
 
-import os
 from pathlib import Path
 import tkinter as tk
 from tkinter import ttk, filedialog
 
 import asistente
 import config
+import io_swan
+import sistema
 import io_swan_nonst
 import swan_runner
 import tablero_swan
@@ -82,6 +83,10 @@ class PasoTipo(asistente.Paso):
         tipo = ("no estacionaria → se generará un VIDEO del evento" if self.nonst
                 else "estacionaria → se generará un TABLERO DE MAPAS")
         self.info.config(text=f"Carpeta: {carpeta.name}\nDetectada como {tipo}.")
+        utm = io_swan.inferir_utm_desde_carpeta(carpeta)
+        self.utm_x.set(str(utm["utm_x"]))
+        self.utm_y.set(str(utm["utm_y"]))
+        contexto["utm_mensaje"] = utm.get("mensaje", "")
 
     def recoger(self, contexto):
         contexto["nonst"] = self.nonst
@@ -127,7 +132,7 @@ class PasoGenerar(asistente.Paso):
             self.resultado = res
             self.wizard.log.insert("end", f"Resultado: {res}\n")
             try:
-                os.startfile(str(res))
+                sistema.abrir_archivo(res)
             except Exception as e:
                 self.wizard.log.insert("end", f"No se pudo abrir {res}: {e}\n")
 

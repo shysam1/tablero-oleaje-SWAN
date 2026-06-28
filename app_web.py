@@ -13,8 +13,11 @@ from pathlib import Path
 _MODO_GUI = "--gui" in sys.argv
 if _MODO_GUI:
     sys.argv = [a for a in sys.argv if a != "--gui"]
-    sys.stdout = open(os.devnull, "w", encoding="utf-8")
-    sys.stderr = open(os.devnull, "w", encoding="utf-8")
+    _log_dir = Path(__file__).resolve().parent / "salidas"
+    _log_dir.mkdir(exist_ok=True)
+    _log_fh = open(_log_dir / "app_web.log", "a", encoding="utf-8")
+    sys.stdout = _log_fh
+    sys.stderr = _log_fh
 
 
 def _ocultar_consola(forzado=False):
@@ -74,6 +77,26 @@ except ImportError:
 from api_web import Api, ruta_ui
 
 
+def _backend_webview():
+    """Backend nativo de pywebview según plataforma."""
+    if sys.platform == "darwin":
+        return "cocoa"
+    if sys.platform == "win32":
+        return "edgechromium"
+    return None
+
+
+def _iniciar_webview():
+    backend = _backend_webview()
+    if backend:
+        try:
+            webview.start(gui=backend)
+            return
+        except Exception:
+            pass
+    webview.start()
+
+
 def main():
     html = ruta_ui()
     if not html.is_file():
@@ -99,10 +122,7 @@ def main():
         threading.Thread(target=_liberar_consola_diferida, daemon=True).start()
     else:
         _ocultar_consola(forzado=False)
-    try:
-        webview.start(gui="edgechromium")
-    except Exception:
-        webview.start()
+    _iniciar_webview()
 
 
 if __name__ == "__main__":
