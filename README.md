@@ -5,7 +5,27 @@ Herramienta personal para analizar oleaje y modelos SWAN, de extremo a extremo:
 Construida de forma iterativa como ejercicio de dirigir IA y verificar con criterio
 de ingeniería (xarray + NetCDF, propagación de oleaje costero).
 
-## Uso rápido
+## Descarga (recomendado)
+
+**Instalador Windows — descarga directa del `.exe`:**
+
+👉 **[Releases → Tablero de Oleaje 1.0.0](https://github.com/shysam1/tablero-oleaje/releases/tag/v1.0.0)**
+
+1. Descarga **`Tablero_Oleaje_Setup_1.0.0.exe`**
+2. Ejecuta el instalador (si SmartScreen avisa: *Más información* → *Ejecutar de todas formas*)
+3. Abre la app desde el acceso directo del Escritorio o menú Inicio
+
+**Requisitos:** Windows 10/11 (64 bits), **Python 3.11+** en el PATH
+([python.org](https://www.python.org/downloads/); marca *Add python.exe to PATH*),
+internet la **primera vez** que abras la app (descarga librerías) y WebView2
+(viene con Windows/Edge actualizado). SWAN y ffmpeg son opcionales.
+
+Guía detallada dentro del instalador: `GUIAS DE USO\GUIA INSTALACION WINDOWS.txt`.
+
+> **macOS:** instalador `.dmg` planificado; por ahora usa la carpeta del proyecto
+> con `iniciar_mac.command` (ver guía Mac en `GUIAS DE USO/`).
+
+## Uso rápido (desarrollo / carpeta .zip)
 
 Doble clic en **`iniciar_windows.bat`** o en **`Tablero de Oleaje.lnk`**
 (regenerar con `Crear Tablero.bat`), o desde consola:
@@ -17,13 +37,15 @@ Doble clic en **`iniciar_windows.bat`** o en **`Tablero de Oleaje.lnk`**
 La interfaz es **solo web** (pywebview + WebView2) en `ui/`. No uses
 `app_tablero.py`: si lo ejecutas, redirige a la web.
 
-El lanzador crea `.venv` e instala `requirements.txt` automáticamente la primera vez.
+El lanzador crea `.venv` e instala `requirements.txt` automáticamente la primera vez
+(vía `scripts/bootstrap_windows.ps1` + `scripts/launch_windows.bat`).
 
 **Windows:** lee `GUIAS DE USO\GUIA DE USO WINDOWS.txt` si falta Python, WebView2 o alguna librería.
 
 **macOS:** lee `GUIAS DE USO\GUIA DE USO MAC.txt` y haz doble clic en `iniciar_mac.command`.
 
-**Entregar a otra persona:** doble clic en `empaquetar_entrega.bat` → se crea un `.zip` en `dist\`.
+**Empaquetar para entregar:** `empaquetar_entrega.bat` → `.zip` en `dist\`.
+**Compilar instalador Windows:** `empaquetar_instalador.bat` → `.exe` en `installer\windows\`.
 
 Atajos en la UI web: **Enter** = Siguiente, **Esc** = Atrás, **Ctrl+L** = limpiar log.
 
@@ -127,7 +149,7 @@ Todas las salidas van a `salidas\<fuente>\`, una subcarpeta por archivo o corrid
 
 ## Requisitos
 
-Python 3.13 con `numpy`, `pandas`, `xarray`, `netcdf4`, `scipy`, `matplotlib`,
+Python **3.11+** con `numpy`, `pandas`, `xarray`, `netcdf4`, `scipy`, `matplotlib`,
 `windrose`, `cmocean`, `scikit-image` (partición espectral) y `cdsapi` (descarga
 ERA5). Opcionales: `ffmpeg` (MP4; si no, GIF), `pytest` (tests).
 Para *Procesar SWAN*, SWAN instalado y `swanrun` en el PATH.

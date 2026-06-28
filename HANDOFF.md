@@ -13,6 +13,12 @@
 
 ## Registro de cambios (más reciente primero)
 
+### 2026-06-28 · README: enlace a Release v1.0.0 con instalador .exe (Cursor)
+*Qué/por qué:* el README del repo destaca la descarga directa del instalador Windows
+desde GitHub Releases (v1.0.0), requisitos y pasos; actualiza uso rápido
+(scripts/, empaquetar_instalador) y Python 3.11+.
+*Archivos:* `README.md`, `HANDOFF.md`.
+
 ### 2026-06-28 · Instaladores Pro Windows (.exe) y macOS (.dmg) (Cursor)
 *Qué/por qué:* implementados los planes de instalador gráfico (versión 1.0.0).
 Objetivo: que un usuario no técnico instale con asistente/arrastrar, sin tocar
