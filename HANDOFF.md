@@ -13,6 +13,10 @@
 
 ## Registro de cambios (más reciente primero)
 
+### 2026-07-02 · README: publicación GitHub más completa + capturas + renombre (Cursor)
+*Qué/por qué:* la publicación pública del repo se veía “pobre” frente a `OperaMar`. Se mejoró el `README.md` para que sea más presentable (sección de capturas, salidas, demo rápida) y se cambió el título a **«Tablero de oleaje SWAN»**. Se añadieron dos capturas a `docs/capturas/` para que el README muestre la UI.
+*Archivos:* `README.md`, `docs/capturas/01_inicio.png`, `docs/capturas/02_modelar.png`, `HANDOFF.md`.
+
 ### 2026-06-28 · README: enlace a Release v1.0.0 con instalador .exe (Cursor)
 *Qué/por qué:* el README del repo destaca la descarga directa del instalador Windows
 desde GitHub Releases (v1.0.0), requisitos y pasos; actualiza uso rápido

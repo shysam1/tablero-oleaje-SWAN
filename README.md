@@ -1,9 +1,15 @@
-# Tablero de Oleaje
+# Tablero de oleaje SWAN
 
-Herramienta personal para analizar oleaje y modelos SWAN, de extremo a extremo:
-**armar y correr el modelo → cargar los resultados → generar tableros y videos**.
+Herramienta para analizar oleaje y modelos **SWAN**, de extremo a extremo:
+**armar y correr el modelo → cargar resultados → generar tableros y videos**.
 Construida de forma iterativa como ejercicio de dirigir IA y verificar con criterio
 de ingeniería (xarray + NetCDF, propagación de oleaje costero).
+
+## Capturas
+
+| Inicio | Modelar con SWAN (wizard) |
+|---|---|
+| ![Inicio](docs/capturas/01_inicio.png) | ![Modelar](docs/capturas/02_modelar.png) |
 
 ## Descarga (recomendado)
 
@@ -49,9 +55,25 @@ El lanzador crea `.venv` e instala `requirements.txt` automáticamente la primer
 
 Atajos en la UI web: **Enter** = Siguiente, **Esc** = Atrás, **Ctrl+L** = limpiar log.
 
+## Dónde quedan las salidas
+
+Todo se guarda bajo `salidas/` dentro del proyecto, en una subcarpeta por archivo o corrida:
+
+```text
+salidas/
+  <fuente>/        ← archivo de entrada o carpeta de corrida SWAN
+    *.png          ← tableros
+    *.mp4 / *.gif  ← videos (si aplica)
+```
+
+## Demo de portafolio (rápida)
+
+- Si ya tienes una corrida SWAN en disco: usa **«Ver una corrida SWAN ya hecha»** y genera el tablero/video.
+- Si no tienes datos a mano: usa **«Analizar oleaje en un punto»** y descarga una serie corta de ERA5 (por ejemplo 1–3 meses) para probar el flujo sin esperar horas.
+
 ## Modo guiado
 
-La app arranca en una pantalla de inicio (**«¿Qué querés hacer?»**) con tres
+La app arranca en una pantalla de inicio (**«¿Qué quieres hacer?»**) con tres
 caminos paso a paso, pensados para no tener que conocer el orden del flujo. Cada
 camino es un asistente con barra de pasos y botones *Atrás / Siguiente*:
 
@@ -159,7 +181,7 @@ Para *Procesar SWAN*, SWAN instalado y `swanrun` en el PATH.
 La descarga usa el Copernicus Climate Data Store. **Cada usuario debe usar su
 propia cuenta** (gratis):
 
-1. Crea una cuenta en <https://cds.climate.copernicus.eu> y acepta los términos
+1. Crea una cuenta en [cds.climate.copernicus.eu](https://cds.climate.copernicus.eu) y acepta los términos
    del dataset ERA5.
 2. En la app web: barra lateral → **Credenciales ERA5** → pega tu `UID:API-KEY`,
    guarda y opcionalmente prueba la conexión.
