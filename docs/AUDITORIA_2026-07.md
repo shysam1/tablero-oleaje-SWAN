@@ -12,7 +12,9 @@
 > flujo principal, agujero de seguridad) · MEDIO (bug real pero con workaround o en
 > flujo secundario) · MENOR (robustez, UX, texto, deuda).
 
-**Estado del loop:** ETAPA A COMPLETA (iteración 8) — comienza ETAPA B (fixes críticos).
+**Estado:** AUDITORÍA CERRADA (2026-07-06). Etapa A completa (7 áreas), etapa B
+completa (A2-1/A2-2/A2-3 corregidos; A6-1 diferido a Cursor), etapa C completa
+(«Prompt para Cursor» al final de este documento + entrada en HANDOFF.md).
 
 ---
 
@@ -665,4 +667,99 @@ trabajo para que la regresión con datos reales corra al menos antes de cada ent
 
 ## Prompt para Cursor
 
-*(se redacta en la etapa C)*
+> Copiar desde aquí hasta el final del documento y pegarlo como instrucción a Cursor.
+
+---
+
+Trabaja en el repo del **Tablero de Oleaje** (raíz: la carpeta que contiene `app_web.py`). Vas a cerrar los hallazgos pendientes de la auditoría `docs/AUDITORIA_2026-07.md`. Los 3 críticos de ERA5 ya están corregidos (commits `e19abd6`, `f0fef4e`, `38ac6af`) — **no toques esas correcciones ni reintroduzcas el `+180°` en la dirección ERA5**.
+
+**REGLAS DURAS (aplican a TODAS las tareas, sin excepción):**
+
+1. Antes de empezar, lee `HANDOFF.md` (bloque inicial + registro de cambios) y `docs/AUDITORIA_2026-07.md` (resumen ejecutivo + la sección del hallazgo que estés tocando).
+2. Después de CADA tarea corre: `python -m pytest test_regresion.py test_asistente.py test_nesting.py test_motor_web.py -q`. Si algo queda en rojo, arréglalo antes de pasar a la siguiente tarea. Si `test_asistente.py` falla con `TclError` (flake de tkinter documentado en HANDOFF), re-corre una vez antes de asumir que rompiste algo.
+3. Un commit por tarea, mensaje en español, formato `fix(...): descripción` o `docs(...)`/`chore(...)` según corresponda, mencionando el ID del hallazgo (p. ej. "A1-1").
+4. **NO hagas `git push`** bajo ninguna circunstancia.
+5. Al terminar todas las tareas: añade UNA entrada arriba del registro de `HANDOFF.md` (formato del propio archivo, agente "Cursor") listando las tareas cerradas, y marca cada hallazgo como `✅ CORREGIDO (Cursor)` en su sección de `docs/AUDITORIA_2026-07.md`.
+6. Si una tarea no la puedes verificar (p. ej. compilar el instalador), haz la parte de código, deja el estado claro en el HANDOFF («pendiente prueba manual del usuario») y sigue con la siguiente. No inventes verificaciones.
+7. Ejecuta las tareas EN ESTE ORDEN. No agrupes commits.
+
+---
+
+**TAREA 1 — A6-1 (CRÍTICO diferido): instalador Windows per-user + escrituras fuera de la carpeta del código.**
+
+Contexto: instalado en `C:\Program Files\` el primer arranque corre sin elevación y no puede crear `.venv` ni `salidas\` (detalle en la sección A6-1 de la auditoría).
+
+1. En `installer/windows/TableroOleaje.iss`: cambia `PrivilegesRequired=admin` → `PrivilegesRequired=lowest` y `DefaultDirName={autopf}\Tablero de Oleaje` → `DefaultDirName={localappdata}\Tablero de Oleaje` (líneas 27-30). Sube `AppVersion` a `1.0.1`.
+2. En `rutas.py` (líneas 14-15): si `Path(__file__).parent` NO es escribible (haz la prueba creando y borrando un archivo temporal, en un `try/except OSError`), usa `Path(os.environ["LOCALAPPDATA"]) / "Tablero de Oleaje" / "salidas"` como `RAIZ_SALIDAS` (en macOS/Linux: `~/.local/share/Tablero de Oleaje/salidas`). Extrae la lógica a una función `_raiz_salidas()` para poder testearla.
+3. En `config.py`: aplica el mismo fallback a la ruta de `config.json` (misma función o una equivalente).
+4. En `scripts/bootstrap_windows.ps1` (líneas 26-30): escribe `install.log` en `$env:LOCALAPPDATA\Tablero de Oleaje\` si la carpeta del proyecto no es escribible (con instalación per-user en `{localappdata}` sí lo será; el fallback es defensa extra).
+5. Test nuevo en `test_regresion.py`: `_raiz_salidas()` con una carpeta de código simulada no-escribible (monkeypatch de la función de chequeo) devuelve la ruta bajo LOCALAPPDATA; con carpeta escribible devuelve `<código>/salidas`.
+6. **Criterio de éxito:** suite en verde + los cambios del `.iss` compilan mentalmente contra la doc de Inno Setup (no puedes compilar; deja nota en HANDOFF: «recompilar `empaquetar_instalador.bat` y probar el Setup en una máquina sin permisos de admin antes de re-publicar el Release»).
+
+**TAREA 2 — A1-1 (MEDIO): percentiles de excedencia con NaN.**
+
+En `productos.py:139-140` (`_calc_excedencia`): cambia `np.percentile(crudo, p)` por `np.nanpercentile(crudo, p)`. Test: serie de 100 puntos con 1 NaN → los tres percentiles son finitos y coherentes (P50 < P90 < P99). **Criterio:** test nuevo en verde.
+
+**TAREA 3 — A1-2 (MEDIO): ordenar `time` al construir el Dataset.**
+
+En `io_oleaje.py`, función `construir_dataset` (líneas 70-94): tras crear `ds`, aplica `ds = ds.sortby("time")` si la coordenada no es monótona creciente. En `validacion.py`, `_chequeo_tiempo` (líneas 51-64): si `t` no es monótono, repórtalo en el detalle. Test: DataFrame con filas barajadas → `productos._span_dias` devuelve el span real (no uno menor). **Criterio:** test nuevo en verde; los tests existentes de `io_oleaje` no cambian.
+
+**TAREA 4 — A2-4 + A5-3 (MEDIO): credenciales del CDS nuevo (PAT sin UID).**
+
+1. En `io_era5.py`, `_validar_formato_clave_cds`: acepta también claves SIN `:` (Personal Access Token del CDS actual, un solo token no vacío); conserva la validación `UID:KEY` para claves con `:`. Ajusta `enmascarar_clave_cds` para mostrar `…últimos4` cuando no hay UID.
+2. En `probar_credenciales_cds`: investiga en la documentación del CDS (https://cds.climate.copernicus.eu/how-to-api) el endpoint de verificación vigente; si `GET {url}/v2/tasks` ya no existe, usa el que documenten (con el mismo header `PRIVATE-TOKEN`). Si no encuentras documentación clara, deja el endpoint actual pero trata el 404 con el mensaje «No se pudo verificar (el CDS cambió su API); la clave se guardó igual».
+3. En `ui/js/views.js:277` y `:284`: actualiza los textos («Copia tu Personal Access Token (o el formato antiguo UID:API-KEY)»).
+4. Tests: `_validar_formato_clave_cds` acepta `"abcdef123456"` y `"12345:abcdef"`, rechaza `""` y `"  "`. **Criterio:** tests nuevos en verde; guardar credenciales con PAT no lanza.
+
+**TAREA 5 — A3-1 (MEDIO): unidades de la partición espectral con espectros SWAN.**
+
+Contexto: `particion_espectral._pesos` (línea 33) integra con `ddir` en radianes; los espectros SWAN se leen en m²/Hz/**grado** → Hs de familias ~7,6× menor en el panel polar del tablero SWAN.
+
+1. En `io_swan.py` (`leer_espectro_swan`, cerca de la línea 313: `densidad = matriz * factor`) y en `io_swan_nonst.py` (`leer_espectro_temporal`, cerca de la línea 213: `dens = mat * factor`): multiplica la densidad por `180.0 / np.pi` para convertirla a m²/Hz/rad, y cambia el atributo `units` de `"m2/Hz/deg"` a `"m2/Hz/rad"` (líneas 317 y 230 respectivamente).
+2. En `productos_particion.py:75`: cambia la etiqueta del colorbar a `S(f,θ) [m²/Hz/rad]`.
+3. Test nuevo: espectro sintético constante `E₀` por grado sobre 24 direcciones de 15° y una banda de frecuencia conocida → tras leer (simular la conversión) y particionar, `Hs = 4·√m₀` coincide con la integral analítica `m₀ = E₀·Δf·360` (tolerancia 1 %).
+4. **Cuidado:** los tests existentes de partición usan espectros ya en radianes y NO deben cambiar; solo cambia la conversión al LEER espectros SWAN.
+5. **Criterio:** test nuevo en verde y `test_regresion.py` completo en verde (si un test existente fijaba valores del espectro SWAN leído, actualiza su valor esperado multiplicando por 180/π y dilo en el commit).
+
+**TAREA 6 — A4-1 (MEDIO): no ocultar los mensajes de `RuntimeError`.**
+
+En `api_web.py:63-67` (`_error_tarea`): trata `RuntimeError` igual que `ValueError` (devuelve `str(exc)`); el resto sigue devolviendo solo el nombre de clase. Test en `test_motor_web.py`: `Api()._error_tarea(RuntimeError("no hay swan"))` devuelve `"no hay swan"`; `_error_tarea(KeyError("x"))` devuelve `"KeyError"`. **Criterio:** tests en verde.
+
+**TAREA 7 — MENORES del área 1 (un solo commit).**
+
+1. A1-3, `productos.py:276-282` (`_dib_rosa`): normaliza por el número de registros con Hs **y** Dir finitos (`np.isfinite(hs) & np.isfinite(dir)`).
+2. A1-4, `tablero_oleaje.py:105`: reemplaza la comparación por `etiqueta = destino.name` (elimina la llamada a `rutas.carpeta_salida` que creaba carpetas vacías).
+3. A1-5, `productos.py:461-465` (`evaluar`): al capturar la excepción usa `faltan = [str(e) or p.get("motivo_inaplicable", ...)]`.
+4. A1-6, `productos.py:463`: añade `KeyError` a la tupla del `except`.
+5. A1-7, `productos.py:298-301` (`_calc_jonswap`): valida también `np.isfinite(hs) and hs > 0` con `ValueError`.
+6. **Criterio:** suite en verde; un test nuevo para A1-3 (rosa con Dir NaN suma ≈100 %).
+
+**TAREA 8 — MENORES del área 2 (un solo commit).**
+
+1. A2-5: elimina la función muerta `_cache_utilizable` de `io_era5.py` (sin llamadas en el repo; verifica con búsqueda global antes de borrar).
+2. A2-6: en `descargar_serie`, camino de caché (busca `return xr.open_dataset(destino)`): cambia a abrir, `.load()`, cerrar y devolver el Dataset en memoria (mismo patrón que `_obtener_tramo_serie`). Igual en `descargar_espectro`.
+3. A2-7: en `validar_rango_fechas`, rechaza `fin` posterior a la fecha actual con `ValueError` («ERA5 no tiene datos futuros»).
+4. **Criterio:** suite en verde; test para A2-7.
+
+**TAREA 9 — MENORES del área 3 (un solo commit).**
+
+1. A3-2, `swan_runner.py:27` y `:153`: si no hay `swanrun` pero sí `swan`, `correr_caso` debe fallar con `RuntimeError` claro («se encontró swan.exe pero falta swanrun; agrega el script swanrun al PATH») en vez del `FileNotFoundError` de `Popen`.
+2. A3-3, `swan_builder.py:169`: extrae γ a un parámetro `gamma_rotura=0.29` de `construir_swn` (default actual para no cambiar corridas existentes) y añade un comentario: «0,29 replica la plantilla del curso Coronel; el default de SWAN es 0,73».
+3. **Criterio:** suite en verde (el round-trip builder→runner no cambia con el default).
+
+**TAREA 10 — MENORES del área 4 y 5 (un solo commit).**
+
+1. A4-2, `api_web.py:247-251` (`eliminar_cache_era5`): captura también `OSError` y devuelve `{"ok": False, "error": "No se pudo borrar (archivo en uso); cierra la app y reintenta."}`.
+2. A5-1, `ui/js/views.js` (`renderCache` y `renderAcerca`): añade `<div class="inline-error hidden" id="inline-error"></div>` bajo el título de cada vista.
+3. A5-2, `ui/js/core.js:66-73` (`T.py`): envuelve la llamada en `try/catch`; en el catch haz `console.error` y `T.notify("Error interno: " + (e?.message || e))`, y devuelve `null`.
+4. A4-3: no implementes cancelación nueva; solo añade en la ayuda del paso Origen (`ui/js/core.js`, texto del wizard analizar) la frase «La descarga no se puede cancelar; si se cuelga, cierra y reabre la app.»
+5. **Criterio:** suite en verde (los cambios JS no tienen tests; verifica a mano que `python app_web.py` abre y las vistas Caché/Acerca cargan sin errores de consola).
+
+**TAREA 11 — MENORES de áreas 6 y 7 (un solo commit).**
+
+1. A6-2: añade `installer/windows/*.exe` a `.gitignore` y ejecuta `git rm --cached "installer/windows/Tablero_Oleaje_Setup_1.0.0.exe"` (el archivo queda en disco, fuera del índice).
+2. A7-2: en `CLAUDE.md` (tabla «Punteros rápidos») y en la regla de trabajo del HANDOFF, actualiza el comando de tests a `pytest test_regresion.py test_asistente.py test_nesting.py test_motor_web.py -q`.
+3. A7-3: en `AGENTS.md`, documenta que en el equipo del usuario se pueden exportar `TABLERO_DATOS_SWAN` → `...\Proyectos\Python\SWAN_Coronel` y `TABLERO_DATOS_OLEAJE` → ruta del `.mat` de Talcahuano para correr los 8 tests con datos reales antes de una entrega.
+4. **Criterio:** `git status` limpio tras el commit; suite en verde.
+
+**CIERRE:** entrada en `HANDOFF.md` + marcas `✅ CORREGIDO (Cursor)` en `docs/AUDITORIA_2026-07.md` + commit final `docs(handoff): cierra hallazgos MEDIO/MENOR de la auditoría 2026-07`. Sin push.

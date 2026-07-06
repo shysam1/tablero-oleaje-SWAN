@@ -13,6 +13,34 @@
 
 ## Registro de cambios (más reciente primero)
 
+### 2026-07-06 · Auditoría integral + fixes críticos ERA5 (Claude Code)
+*Qué/por qué:* auditoría completa de 7 áreas (motor, ERA5, cadena SWAN, puente web,
+UI, empaquetado, tests) documentada en **`docs/AUDITORIA_2026-07.md`** (resumen
+ejecutivo con 4 CRÍTICOS, 6 MEDIOS, 18 MENORES; cada hallazgo con archivo:línea y
+evidencia). Se corrigieron los 3 críticos de ERA5:
+- **A2-1 (`e19abd6`):** el `+180°` sobre `mwd` invertía la dirección (mwd de ERA5 YA
+  es procedencia; verificado sobre la caché real: quedaba oleaje "desde tierra").
+  ⚠️ Las cachés ERA5 parseadas antes de este fix tienen Dir invertida: se invalidan
+  solas vía atributo `dir_convencion` y la app re-descarga (la carpeta
+  `salidas/ERA5_-35p58...` del usuario se re-descargará al usarla).
+- **A2-2 (`f0fef4e`):** la petición CDS es producto cartesiano año×mes×día; sin
+  recorte, un rango corto que cruza mes/año traía fechas espurias (reproducido).
+  Ahora `_recortar_a_rango` en ambos parsers.
+- **A2-3 (`38ac6af`):** el espectro d2fd del CDS trae ejes como números de bin
+  (1..30/1..24); se reconstruyen los ejes físicos y la dirección pasa de «hacia» a
+  procedencia; unidades corregidas a m²/Hz/rad.
+- **A6-1 (instalador en Program Files, CRÍTICO) quedó DIFERIDO A CURSOR** con
+  especificación completa: el fix exige recompilar/probar el `.exe` en máquina real.
+*Pendiente para Cursor:* ejecutar el **«Prompt para Cursor»** al final de
+`docs/AUDITORIA_2026-07.md` (11 tareas en orden fijo: A6-1 + 5 MEDIOS + 18 MENORES,
+con criterio de éxito por tarea; suite ampliada con `test_motor_web.py`; sin push).
+*Archivos:* `io_era5.py`, `test_regresion.py` (+7 tests, 1 reescrito, 1 mock
+corregido), `docs/AUDITORIA_2026-07.md` (nuevo), `HANDOFF.md`.
+*Notas:* suite `pytest test_regresion.py test_asistente.py test_nesting.py -q` en
+verde: **146 passed, 8 skipped** (skips = datos reales sin `TABLERO_DATOS_*`). Los
+tests de espectro/partición existentes no cambiaron; los espectros SWAN siguen en
+m²/Hz/° hasta la Tarea 5 de Cursor (A3-1).
+
 ### 2026-07-02 · README: publicación GitHub más completa + capturas + renombre (Cursor)
 *Qué/por qué:* la publicación pública del repo se veía “pobre” frente a `OperaMar`. Se mejoró el `README.md` para que sea más presentable (sección de capturas, salidas, demo rápida) y se cambió el título a **«Tablero de oleaje SWAN»**. Se añadieron dos capturas a `docs/capturas/` para que el README muestre la UI.
 *Archivos:* `README.md`, `docs/capturas/01_inicio.png`, `docs/capturas/02_modelar.png`, `HANDOFF.md`.
