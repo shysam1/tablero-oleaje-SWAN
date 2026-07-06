@@ -26,7 +26,7 @@ Esta guia explica como instalar la aplicacion con el instalador grafico
 
   PASO 2 - INSTALAR TABLERO DE OLEAJE
   -----------------------------------
-  1. Haz doble clic en:  Tablero_Oleaje_Setup_1.0.0.exe
+  1. Haz doble clic en:  Tablero_Oleaje_Setup_1.0.1.exe
   2. Acepta el aviso de Windows (ver "SmartScreen" mas abajo) y permite que
      la aplicacion haga cambios (pide permisos de administrador).
   3. Sigue el asistente. Se instala en:

@@ -8,7 +8,7 @@ Gracias por usar esta herramienta. Sigue estos pasos según tu computador:
   ¿INSTALADOR O CARPETA?
   ----------------------
   La forma más fácil es el INSTALADOR (recomendado):
-    - Windows:  Tablero_Oleaje_Setup_1.0.0.exe
+    - Windows:  Tablero_Oleaje_Setup_1.0.1.exe
     - macOS:    Tablero de Oleaje 1.0.dmg
   Si recibiste uno de esos archivos, abre la guía de instalación de tu sistema
   en la carpeta GUIAS DE USO y olvídate del resto de este texto.

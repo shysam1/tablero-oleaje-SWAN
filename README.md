@@ -15,9 +15,9 @@ de ingeniería (xarray + NetCDF, propagación de oleaje costero).
 
 **Instalador Windows — descarga directa del `.exe`:**
 
-👉 **[Releases → Tablero de Oleaje 1.0.0](https://github.com/shysam1/tablero-oleaje/releases/tag/v1.0.0)**
+👉 **[Releases → Tablero de Oleaje 1.0.1](https://github.com/shysam1/tablero-oleaje/releases/tag/v1.0.1)**
 
-1. Descarga **`Tablero_Oleaje_Setup_1.0.0.exe`**
+1. Descarga **`Tablero_Oleaje_Setup_1.0.1.exe`**
 2. Ejecuta el instalador (si SmartScreen avisa: *Más información* → *Ejecutar de todas formas*)
 3. Abre la app desde el acceso directo del Escritorio o menú Inicio
 

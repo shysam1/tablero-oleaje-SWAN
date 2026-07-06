@@ -13,6 +13,15 @@
 
 ## Registro de cambios (más reciente primero)
 
+### 2026-07-06 · Release v1.0.1 — instalador per-user publicado (Cursor)
+*Qué/por qué:* compilado `Tablero_Oleaje_Setup_1.0.1.exe` (Inno Setup 6.7.3),
+publicado en GitHub Releases y README actualizado. Incluye el fix A6-1 (instalación
+en `%LOCALAPPDATA%`, sin admin) y todos los fixes de la auditoría 2026-07.
+*Archivos:* `installer/windows/Tablero_Oleaje_Setup_1.0.1.exe` (solo en Release, no
+en git), `README.md`, `LEEME PRIMERO.txt`, `GUIAS DE USO/GUIA INSTALACION WINDOWS.txt`.
+*Notas:* conviene probar el Setup en una cuenta sin permisos de admin antes de
+recomendarlo ampliamente.
+
 ### 2026-07-06 · Cierre hallazgos auditoría 2026-07 (Cursor)
 *Qué/por qué:* ejecutadas las 11 tareas del «Prompt para Cursor» en
 `docs/AUDITORIA_2026-07.md`: A6-1 (instalador per-user + fallback
