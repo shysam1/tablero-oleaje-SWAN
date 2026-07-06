@@ -658,7 +658,7 @@ no por código.
 8. ✅ Carreras GUI/hilos (winfo_exists + cancelar al cerrar) — **HECHO (Cursor)**.
 
 **Regla de trabajo:** correr `python -m pytest test_regresion.py test_asistente.py
-test_nesting.py -q` tras cada cambio (sin sandbox en este equipo) y mantener la
+test_nesting.py test_motor_web.py -q` tras cada cambio (sin sandbox en este equipo) y mantener la
 coherencia entre módulos.
 
 ## Qué es

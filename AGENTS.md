@@ -54,3 +54,14 @@ pytest test_regresion.py test_nesting.py test_motor_web.py test_asistente.py -q 
   apuntando a datasets SWAN/oleaje reales (no incluidos en el repo).
 
 Con esos ajustes la suite queda en verde (≈137 passed, 8 skipped, 2 deselected).
+
+### Tests con datos reales (equipo local)
+
+En la máquina del usuario se pueden exportar variables de entorno para correr los
+8 tests que usan datasets reales (por defecto skipped):
+
+```
+set TABLERO_DATOS_SWAN=C:\Users\123ja\OneDrive\Escritorio\Proyectos\Python\SWAN_Coronel
+set TABLERO_DATOS_OLEAJE=<ruta al .mat de Talcahuano>
+pytest test_regresion.py test_asistente.py test_nesting.py test_motor_web.py -q
+```

@@ -51,7 +51,7 @@ decisiones de diseño.
 | Puente web | `api_web.py`, `motor_web.py` |
 | Motor SWAN/oleaje | `tablero_oleaje.py`, `swan_runner.py`, `pasos_*.py` |
 | Lanzador usuario | `Tablero de Oleaje.lnk` (en carpeta del repo) → `python.exe app_web.py --gui` |
-| Tests regresión | `pytest test_regresion.py test_asistente.py test_nesting.py -q` |
+| Tests regresión | `pytest test_regresion.py test_asistente.py test_nesting.py test_motor_web.py -q` |
 
 ## Estilo
 
