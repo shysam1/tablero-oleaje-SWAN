@@ -733,13 +733,17 @@ def ruta_cache_espectro(lat, lon, inicio, fin):
 
 def _espectro_cache_limpia(ruta):
     """
-    True si el .nc ya es Efth(time, freq, dir) en un punto (sin lat/lon).
+    True si el .nc ya es Efth(time, freq, dir) en un punto (sin lat/lon) y con
+    ejes físicos reconstruidos. Las cachés sin la marca 'ejes' son de versiones
+    que dejaban los ejes como números de bin (Tp/m₀ sin sentido) y se descartan.
     """
     try:
         if not ruta.exists() or ruta.stat().st_size == 0:
             return False
         with xr.open_dataset(ruta) as ds:
             if "Efth" not in ds.data_vars:
+                return False
+            if ds.attrs.get("ejes") != "fisicos":
                 return False
             dims = set(ds["Efth"].dims)
             espurias = dims & {"latitude", "longitude", "lat", "lon"}
@@ -767,12 +771,33 @@ def _ruta_chunk_espectro(carpeta, inicio, fin):
     return carpeta / "chunks_espectro" / f"tramo_{d0}_{d1}.nc"
 
 
+# Ejes físicos del espectro WAM/ERA5 (doc. ECMWF): la conversión GRIB→NetCDF
+# del CDS entrega frequency/direction como NÚMEROS DE BIN (1..30 y 1..24), no
+# como magnitudes; hay que reconstruirlas con estas constantes.
+_FREQ0_ERA5 = 0.03453      # Hz, primera banda de frecuencia
+_RAZON_FREQ_ERA5 = 1.1     # fₙ = fₙ₋₁ · 1.1
+_DDIR_ERA5 = 15.0          # ° por bin de dirección (24 bins desde 7.5°)
+
+
+def _ejes_como_indices(valores):
+    """True si la coordenada son números de bin (1..N o 0..N−1), no magnitudes."""
+    v = np.asarray(valores, float)
+    if v.size == 0:
+        return False
+    return (np.allclose(v, np.arange(1, v.size + 1))
+            or np.allclose(v, np.arange(v.size)))
+
+
 def _parsear_espectro_nc(ruta, lat=None, lon=None, inicio=None, fin=None):
     """
     .nc de ERA5 2D spectra → Dataset con Efth(time, freq, dir), des-logueado.
 
     ERA5 guarda d2fd como log10 de la densidad; aquí se reconstruye 10**d2fd y se
     renombran las dimensiones a (freq, dir) para igualar a leer_espectro_temporal.
+    Si los ejes vienen como números de bin (conversión GRIB→NetCDF del CDS), se
+    reconstruyen las frecuencias (0.03453·1.1ⁿ⁻¹ Hz) y direcciones físicas; las
+    direcciones ERA5 son «hacia dónde» y se convierten a procedencia náutica
+    (+180°), la convención del resto del pipeline.
     Si el archivo trae lat/lon (descarga en área), selecciona el punto más cercano.
     Maneja tanto el .nc plano (CDS antiguo) como el .zip por stream (CDS nuevo).
     """
@@ -804,8 +829,22 @@ def _parsear_espectro_nc(ruta, lat=None, lon=None, inicio=None, fin=None):
     if renombres:
         efth = efth.rename(renombres)
 
+    # Reconstrucción de ejes físicos cuando el CDS entrega números de bin.
+    if "freq" in efth.dims and _ejes_como_indices(efth["freq"].values):
+        n_f = efth.sizes["freq"]
+        efth = efth.assign_coords(
+            freq=_FREQ0_ERA5 * _RAZON_FREQ_ERA5 ** np.arange(n_f))
+    if "dir" in efth.dims and _ejes_como_indices(efth["dir"].values):
+        n_d = efth.sizes["dir"]
+        dir_hacia = 7.5 + _DDIR_ERA5 * np.arange(n_d)     # convención «hacia»
+        efth = efth.assign_coords(dir=(dir_hacia + 180.0) % 360.0)
+        efth = efth.sortby("dir")                          # eje ascendente
+
     ds = xr.Dataset({"Efth": efth})
-    ds["Efth"].attrs = {"long_name": "Densidad de energía", "units": "m2/Hz/deg"}
+    # 10**d2fd queda en m²·s·rad⁻¹ (por radián), la unidad nativa de ERA5;
+    # coherente con la integración en radianes de particion_espectral._pesos.
+    ds["Efth"].attrs = {"long_name": "Densidad de energía", "units": "m2/Hz/rad"}
+    ds.attrs["ejes"] = "fisicos"
     if "freq" in ds.coords:
         ds["freq"].attrs = {"long_name": "Frecuencia", "units": "Hz"}
     if "dir" in ds.coords:

@@ -272,7 +272,17 @@ generar tramos que cruzan mes) y al espectro (`_peticion_espectro`,
 `_parsear_serie_nc` y `_parsear_espectro_nc` (cubre todos los caminos), y/o cortar
 `_particiones_descarga` siempre en límites de mes.
 
-### A2-3 · CRÍTICO — Espectro ERA5: ejes de frecuencia/dirección quedan como índices 1..30 / 1..24
+### A2-3 · CRÍTICO — ✅ CORREGIDO — Espectro ERA5: ejes de frecuencia/dirección quedaban como índices 1..30 / 1..24
+
+> **CORREGIDO (etapa B, 2026-07-06):** `_parsear_espectro_nc` detecta ejes de bin
+> (`_ejes_como_indices`) y reconstruye las magnitudes físicas
+> (f₁=0,03453 Hz·1,1ⁿ⁻¹; dir=7,5°+15°·(n−1)) convirtiendo la dirección de «hacia»
+> a procedencia náutica (+180°, eje reordenado). Etiqueta de unidades corregida a
+> `m2/Hz/rad` (coherente con la integración en radianes de la partición) y marca
+> `ejes="fisicos"` exigida por `_espectro_cache_limpia` para descartar cachés
+> antiguas. Tests: `test_parsear_espectro_reconstruye_ejes_de_bin` (verifica
+> frecuencias y el corrimiento +180° de la energía) y
+> `test_espectro_cache_sin_marca_de_ejes_se_descarta`. Suite: 146 passed.
 
 `_parsear_espectro_nc` (`io_era5.py:755-768`) toma `d2fd` y conserva las coordenadas
 tal cual (`coords={k: d2fd.coords[k] for k in d2fd.dims}`), solo renombrando
@@ -637,7 +647,8 @@ trabajo para que la regresión con datos reales corra al menos antes de cada ent
 | Hallazgo | Fix | Commit | Suite |
 |----------|-----|--------|-------|
 | A2-1 (+A7-1) — Dir ERA5 invertida 180° | Sin `+180°`; marca `dir_convencion` invalida cachés antiguas; test del bug reemplazado + test de invalidación | `e19abd6` | 142 passed, 8 skipped |
-| A2-2 — Fechas fuera del rango pedido (producto cartesiano CDS) | `_recortar_a_rango` en ambos parsers + guard de serie vacía; 2 tests nuevos y mock corregido | *(ver git log)* | 144 passed, 8 skipped |
+| A2-2 — Fechas fuera del rango pedido (producto cartesiano CDS) | `_recortar_a_rango` en ambos parsers + guard de serie vacía; 2 tests nuevos y mock corregido | `f0fef4e` | 144 passed, 8 skipped |
+| A2-3 — Espectro d2fd con ejes índice | Reconstrucción de ejes físicos + dirección a procedencia + unidades `m2/Hz/rad` + marca `ejes` invalida cachés; 2 tests nuevos | *(ver git log)* | 146 passed, 8 skipped |
 
 ## Prompt para Cursor
 

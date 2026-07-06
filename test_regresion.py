@@ -952,6 +952,47 @@ def test_parsear_espectro_selecciona_punto_en_grilla(tmp_path):
     assert "latitude" not in esp["Efth"].dims
 
 
+def test_parsear_espectro_reconstruye_ejes_de_bin(tmp_path):
+    """
+    La conversión GRIB→NetCDF del CDS entrega frequency/direction como números
+    de bin (1..30 y 1..24): el parser debe reconstruir las magnitudes físicas
+    (f₁=0,03453 Hz ·1,1ⁿ⁻¹; dir=7,5°+15°·(n−1), «hacia») y pasar la dirección a
+    procedencia náutica (auditoría 2026-07, hallazgo A2-3).
+    """
+    import xarray as xr
+    t = np.array(["2024-07-28T00"], dtype="datetime64[ns]")
+    dens = np.full((1, 30, 24), 0.001)
+    dens[0, :, 0] = 0.5          # energía concentrada en el bin 1 (hacia 7,5°)
+    ruta = tmp_path / "espectro_bins.nc"
+    xr.Dataset(
+        {"d2fd": (("time", "frequency", "direction"), np.log10(dens))},
+        coords={"time": t,
+                "frequency": np.arange(1, 31, dtype=float),
+                "direction": np.arange(1, 25, dtype=float)}).to_netcdf(ruta)
+
+    esp = io_era5._parsear_espectro_nc(ruta)
+    freqs = esp["freq"].values
+    assert freqs[0] == pytest.approx(0.03453)
+    assert freqs[-1] == pytest.approx(0.03453 * 1.1 ** 29, rel=1e-6)
+    # La energía que iba «hacia 7,5°» debe quedar en procedencia 187,5°.
+    e_por_dir = esp["Efth"].isel(time=0).sum("freq")
+    dir_pico = float(esp["dir"].values[int(e_por_dir.argmax())])
+    assert dir_pico == pytest.approx(187.5)
+    assert esp["Efth"].attrs["units"] == "m2/Hz/rad"
+    assert esp.attrs.get("ejes") == "fisicos"
+
+
+def test_espectro_cache_sin_marca_de_ejes_se_descarta(tmp_path):
+    """Cachés de espectro parseadas con ejes de bin (pre-fix A2-3) se descartan."""
+    import xarray as xr
+    t = np.array(["2024-07-28T00"], dtype="datetime64[ns]")
+    vieja = tmp_path / "era5_espectro.nc"
+    xr.Dataset(
+        {"Efth": (("time", "freq", "dir"), np.full((1, 2, 2), 0.5))},
+        coords={"time": t, "freq": [1.0, 2.0], "dir": [1.0, 2.0]}).to_netcdf(vieja)
+    assert io_era5._espectro_cache_limpia(vieja) is False
+
+
 def test_ruta_cache_espectro_comparte_carpeta_con_serie():
     c_serie, _ = io_era5.ruta_cache_serie(-37.0, -73.5, "2024-01-01", "2024-01-31")
     c_esp, nc_esp = io_era5.ruta_cache_espectro(-37.0, -73.5, "2024-01-01", "2024-01-31")
