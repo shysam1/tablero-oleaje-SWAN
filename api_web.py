@@ -247,7 +247,12 @@ class Api:
     def eliminar_cache_era5(self, carpeta):
         try:
             return motor_web.eliminar_cache_era5(carpeta)
-        except ValueError as e:
+        except (ValueError, OSError) as e:
+            if isinstance(e, OSError):
+                return {
+                    "ok": False,
+                    "error": "No se pudo borrar (archivo en uso); cierra la app y reintenta.",
+                }
             return {"ok": False, "error": str(e)}
 
     def guardar_preferencias(self, prefs_json):

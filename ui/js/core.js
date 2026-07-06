@@ -16,7 +16,7 @@ window.Tablero = window.Tablero || {};
       titulo: "Analizar oleaje en un punto",
       ayuda: "Carga tu serie o descárgala de ERA5. Dir es convención náutica (de dónde viene el oleaje).",
       pasos: [
-        { id: "origen", titulo: "Origen", ayuda: "Archivo local o descarga ERA5 por coordenada. Para Gumbel y climatología hacen falta ≥2 años (730 días)." },
+        { id: "origen", titulo: "Origen", ayuda: "Archivo local o descarga ERA5 por coordenada. Para Gumbel y climatología hacen falta ≥2 años (730 días). La descarga no se puede cancelar; si se cuelga, cierra y reabre la app." },
         { id: "revision", titulo: "Revisión", ayuda: "Chequeos físicos automáticos y productos disponibles según la duración de los datos." },
         { id: "tablero", titulo: "Tablero", ayuda: "Genera el PNG multipanel. Los paneles omitidos se anotan al pie de la figura." },
       ],
@@ -69,7 +69,13 @@ window.Tablero = window.Tablero || {};
       console.warn("API no disponible:", fn);
       return null;
     }
-    return await a[fn](...args);
+    try {
+      return await a[fn](...args);
+    } catch (e) {
+      console.error(e);
+      T.notify("Error interno: " + (e?.message || e));
+      return null;
+    }
   };
 
   const taskWaiters = {};

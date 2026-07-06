@@ -333,6 +333,7 @@ window.Tablero = window.Tablero || {};
 
       T.main().innerHTML = `
         <h2 class="hero-title" style="font-size:22px">Caché ERA5</h2>
+        <div class="inline-error hidden" id="inline-error"></div>
         <p class="hero-sub">Descargas guardadas en salidas/. Borrar libera espacio; los tramos en chunks/ se eliminan con la carpeta.</p>
         <div class="form-card table-wrap">
           <table class="data-table">
@@ -357,6 +358,7 @@ window.Tablero = window.Tablero || {};
       const info = (await T.py("info_aplicacion")) || {};
       T.main().innerHTML = `
         <h2 class="hero-title" style="font-size:22px">Acerca de</h2>
+        <div class="inline-error hidden" id="inline-error"></div>
         <div class="form-card about-box">
           <p><strong>Tablero de Oleaje</strong></p>
           <p>Versión: ${T.esc(info.version || "—")}</p>
