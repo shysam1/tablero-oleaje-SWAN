@@ -67,11 +67,14 @@ def leer_credenciales_cds():
 
 
 def enmascarar_clave_cds(key):
-    """Muestra UID y solo los últimos caracteres de la API key."""
+    """Muestra UID (si hay) y solo los últimos caracteres del token."""
     if not key:
         return ""
     if ":" not in key:
-        return "****"
+        secreto = key
+        if len(secreto) <= 4:
+            return "…****"
+        return f"…{secreto[-4:]}"
     uid, secreto = key.split(":", 1)
     if len(secreto) <= 4:
         return f"{uid}:****"
@@ -102,16 +105,26 @@ def estado_credenciales_cds():
 
 def _validar_formato_clave_cds(key):
     key = (key or "").strip()
-    if not key or ":" not in key:
+    if not key:
         raise ValueError(
-            "La clave debe tener formato UID:API-KEY (cópiala desde tu perfil CDS).")
+            "La clave no puede estar vacía (Personal Access Token o UID:API-KEY).")
+    if ":" not in key:
+        return None, key
     uid, api = key.split(":", 1)
     uid = uid.strip()
     api = api.strip()
     if not uid.isdigit() or not api:
         raise ValueError(
-            "La clave debe ser UID:API-KEY, con UID numérico y la API key del perfil.")
+            "La clave debe ser Personal Access Token o UID:API-KEY, "
+            "con UID numérico y la API key del perfil.")
     return uid, api
+
+
+def _clave_cds_final(uid, token):
+    """Clave tal como se guarda en ~/.cdsapirc (PAT o UID:API-KEY)."""
+    if uid is None:
+        return token
+    return f"{uid}:{token}"
 
 
 def _normalizar_url_cds(url):
@@ -131,12 +144,13 @@ def guardar_credenciales_cds(url, key=None):
     prev = leer_credenciales_cds()
     key_nueva = (key or "").strip()
     if key_nueva:
-        uid, api = _validar_formato_clave_cds(key_nueva)
-        key_final = f"{uid}:{api}"
+        uid, token = _validar_formato_clave_cds(key_nueva)
+        key_final = _clave_cds_final(uid, token)
     elif prev:
         key_final = prev["key"]
     else:
-        raise ValueError("Indica la clave UID:API-KEY de tu cuenta CDS.")
+        raise ValueError(
+            "Indica el Personal Access Token o UID:API-KEY de tu cuenta CDS.")
 
     contenido = f"url: {url}\nkey: {key_final}\n"
     destino = ruta_cdsapirc()
@@ -153,21 +167,26 @@ def guardar_credenciales_cds(url, key=None):
 
 def probar_credenciales_cds(url=None, key=None, *, timeout=25):
     """
-    Comprueba formato y que el CDS acepte la clave (GET /v2/tasks, sin descarga).
+    Comprueba formato y que el CDS acepte la clave (POST profiles/verification/pat).
     Si url/key son None, usa el archivo ~/.cdsapirc.
     """
     prev = leer_credenciales_cds()
     url_final = _normalizar_url_cds(url or (prev or {}).get("url"))
     key_raw = (key or "").strip() or (prev or {}).get("key")
     if not key_raw:
-        raise ValueError("Indica la clave UID:API-KEY para probar la conexión.")
-    uid, api = _validar_formato_clave_cds(key_raw)
-    key_final = f"{uid}:{api}"
-    endpoint = f"{url_final}/v2/tasks?limit=1"
+        raise ValueError(
+            "Indica el Personal Access Token o UID:API-KEY para probar la conexión.")
+    uid, token = _validar_formato_clave_cds(key_raw)
+    key_final = _clave_cds_final(uid, token)
+    endpoint = f"{url_final}/profiles/v1/account/verification/pat"
     req = urllib.request.Request(
         endpoint,
-        headers={"PRIVATE-TOKEN": key_final},
-        method="GET",
+        data=b"{}",
+        headers={
+            "PRIVATE-TOKEN": key_final,
+            "Content-Type": "application/json",
+        },
+        method="POST",
     )
     try:
         with urllib.request.urlopen(req, timeout=timeout) as resp:
@@ -175,10 +194,17 @@ def probar_credenciales_cds(url=None, key=None, *, timeout=25):
                 return {"mensaje": "El CDS aceptó tus credenciales."}
             raise ValueError(f"Respuesta inesperada del CDS ({resp.status}).")
     except urllib.error.HTTPError as exc:
+        if exc.code == 404:
+            return {
+                "mensaje": (
+                    "No se pudo verificar (el CDS cambió su API); "
+                    "la clave se guardó igual."
+                ),
+            }
         if exc.code in (401, 403):
             raise ValueError(
-                "El CDS rechazó la clave. Revisa UID:API-KEY y que aceptaste "
-                "los términos del dataset ERA5 en tu cuenta."
+                "El CDS rechazó la clave. Revisa tu Personal Access Token "
+                "(o UID:API-KEY) y que aceptaste los términos del dataset ERA5."
             ) from exc
         raise ValueError(
             f"Error del CDS al probar la conexión ({exc.code})."

@@ -274,14 +274,14 @@ window.Tablero = window.Tablero || {};
           <ol class="instr-list">
             <li>Crea una cuenta en <a href="#" id="cds-open-web">cds.climate.copernicus.eu</a>.</li>
             <li>Acepta los términos del dataset <em>ERA5 single levels</em>.</li>
-            <li>Copia la API key (<code>UID:API-KEY</code>) y pégala abajo.</li>
+            <li>Copia tu Personal Access Token (o el formato antiguo <code>UID:API-KEY</code>) y pégala abajo.</li>
           </ol>
           <label class="field">URL del API
             <input type="text" id="cds-url" value="${T.esc(st.url || "https://cds.climate.copernicus.eu/api")}"/>
           </label>
           <label class="field">Clave API
             <input type="password" id="cds-key" autocomplete="off"
-              placeholder="${st.configurado ? "Vacío = conservar clave actual" : "UID:API-KEY"}"/>
+              placeholder="${st.configurado ? "Vacío = conservar clave actual" : "Personal Access Token o UID:API-KEY"}"/>
           </label>
           <div style="display:flex;gap:8px;flex-wrap:wrap;margin-top:8px">
             <button type="button" class="btn primary" id="cds-guardar">Guardar</button>

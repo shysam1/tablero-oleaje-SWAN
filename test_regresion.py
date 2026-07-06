@@ -410,9 +410,33 @@ def test_guardar_credenciales_conserva_clave(monkeypatch, tmp_path):
 def test_probar_credenciales_rechaza_formato(monkeypatch, tmp_path):
     monkeypatch.setenv("USERPROFILE", str(tmp_path))
     monkeypatch.setenv("HOME", str(tmp_path))
-    with pytest.raises(ValueError, match="UID:API-KEY"):
+    with pytest.raises(ValueError, match="Indica"):
         io_era5.probar_credenciales_cds(
-            "https://cds.climate.copernicus.eu/api", "clave-mal-formada")
+            "https://cds.climate.copernicus.eu/api", "")
+    with pytest.raises(ValueError, match="Indica"):
+        io_era5.probar_credenciales_cds(
+            "https://cds.climate.copernicus.eu/api", " ")
+
+
+def test_validar_formato_clave_cds_pat_y_legacy():
+    assert io_era5._validar_formato_clave_cds("abcdef123456") == (None, "abcdef123456")
+    assert io_era5._validar_formato_clave_cds("12345:abcdef") == ("12345", "abcdef")
+    with pytest.raises(ValueError):
+        io_era5._validar_formato_clave_cds("")
+    with pytest.raises(ValueError):
+        io_era5._validar_formato_clave_cds(" ")
+
+
+def test_guardar_credenciales_pat(monkeypatch, tmp_path):
+    monkeypatch.setenv("USERPROFILE", str(tmp_path))
+    monkeypatch.setenv("HOME", str(tmp_path))
+    io_era5.guardar_credenciales_cds(
+        "https://cds.climate.copernicus.eu/api", "abcdef123456")
+    cred = io_era5.leer_credenciales_cds()
+    assert cred["key"] == "abcdef123456"
+    est = io_era5.estado_credenciales_cds()
+    assert est["uid"] == ""
+    assert est["key_enmascarada"] == "…3456"
 
 
 def test_probar_credenciales_acepta_respuesta_cds(monkeypatch, tmp_path):
