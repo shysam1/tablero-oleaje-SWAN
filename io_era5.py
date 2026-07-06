@@ -526,12 +526,18 @@ def _parsear_serie_nc(ruta, lat, lon, inicio=None, fin=None):
         raise ValueError(
             f"La descarga ERA5 está incompleta (faltan: {', '.join(sorted(faltan))}).")
     ds = bruto[list(presentes)].rename(presentes)
-    # ECMWF mwd = dirección de propagación; pipeline/SWAN usan procedencia náutica.
+    # El mwd escalar de ERA5 (paramId 140230, «degrees true») ya es dirección de
+    # PROCEDENCIA («coming from», doc. ECMWF/CDS): se usa tal cual, sin sumar 180°.
+    # (No confundir con las direcciones del espectro 2D d2fd, que sí son «hacia».)
     if "Dir" in ds.data_vars:
-        ds["Dir"] = (ds["Dir"] + 180.0) % 360.0
+        ds["Dir"] = ds["Dir"] % 360.0
     for v, attrs in _ATRIBUTOS.items():
         if v in ds.data_vars:
             ds[v].attrs.update(attrs)
+    # Marca de convención: las cachés parseadas ANTES de este fix guardan Dir
+    # invertida 180° (bug corregido); sin esta marca se consideran inutilizables
+    # y se re-parsean/re-descargan.
+    ds.attrs["dir_convencion"] = "procedencia"
     ds.attrs["fuente"] = f"ERA5 ({lat:.3f}, {lon:.3f})"
     if inicio is not None and fin is not None:
         s0, s1 = validar_rango_fechas(inicio, fin)
@@ -615,15 +621,18 @@ def _retrieve_atomico(dataset, peticion, destino, log_fn=None):
 
 def _serie_cache_limpia(ruta):
     """
-    True si el .nc cacheado ya es la serie PARSEADA del pipeline (abrible y con
-    'Hs'). El CDS entrega una descarga cruda (zip/multi-stream) que el resto del
-    pipeline (io_oleaje.cargar) no sabe leer; por eso se cachea la serie ya limpia.
+    True si el .nc cacheado ya es la serie PARSEADA del pipeline (abrible, con
+    'Hs' y con la convención de dirección vigente). El CDS entrega una descarga
+    cruda (zip/multi-stream) que el resto del pipeline (io_oleaje.cargar) no sabe
+    leer; por eso se cachea la serie ya limpia. Las cachés sin la marca
+    'dir_convencion' son de versiones con la Dir invertida 180° y se descartan.
     """
     try:
         if not ruta.exists() or ruta.stat().st_size == 0:
             return False
         with xr.open_dataset(ruta) as ds:
-            return "Hs" in ds.data_vars
+            return ("Hs" in ds.data_vars
+                    and ds.attrs.get("dir_convencion") == "procedencia")
     except Exception:
         return False
 

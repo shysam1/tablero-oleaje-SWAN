@@ -462,12 +462,38 @@ def test_parsear_serie_selecciona_punto_y_renombra(tmp_path):
     assert "latitude" not in ds.dims          # punto ya seleccionado
 
 
-def test_parsear_serie_convierte_mwd_a_procedencia(tmp_path):
-    """mwd ERA5 es propagación; Dir del pipeline es procedencia náutica (+180°)."""
+def test_parsear_serie_conserva_mwd_como_procedencia(tmp_path):
+    """
+    El mwd escalar de ERA5 ya es procedencia («coming from», doc. ECMWF): el
+    parser NO debe sumarle 180°. Regresión del bug que invertía la rosa y el
+    borde SWAN derivado de ERA5 (auditoría 2026-07, hallazgo A2-1).
+    """
     ruta = tmp_path / "serie.nc"
     _nc_serie_sintetico(ruta)
     ds = io_era5._parsear_serie_nc(ruta, lat=-37.0, lon=-73.5)
-    assert float(ds["Dir"].isel(time=0)) == pytest.approx(45.0)
+    assert float(ds["Dir"].isel(time=0)) == pytest.approx(225.0)
+    assert ds.attrs.get("dir_convencion") == "procedencia"
+
+
+def test_serie_cache_sin_marca_de_convencion_se_descarta(tmp_path):
+    """
+    Las cachés parseadas antes del fix A2-1 guardan Dir invertida 180° y no
+    llevan el atributo 'dir_convencion': deben tratarse como caché inutilizable
+    para forzar el re-parseo/re-descarga.
+    """
+    import xarray as xr
+    vieja = tmp_path / "era5_serie.nc"
+    t = np.array(["2024-07-28T00"], dtype="datetime64[ns]")
+    xr.Dataset({"Hs": ("time", [2.0]), "Tp": ("time", [12.0]),
+                "Dir": ("time", [45.0])},
+               coords={"time": t}).to_netcdf(vieja)
+    assert io_era5._serie_cache_limpia(vieja) is False
+
+    nueva = tmp_path / "era5_serie_ok.nc"
+    ds = xr.Dataset({"Hs": ("time", [2.0])}, coords={"time": t},
+                    attrs={"dir_convencion": "procedencia"})
+    ds.to_netcdf(nueva)
+    assert io_era5._serie_cache_limpia(nueva) is True
 
 
 def test_seguridad_rechaza_nombre_caso_con_espacios():
