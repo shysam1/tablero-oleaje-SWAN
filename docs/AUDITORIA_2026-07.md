@@ -239,7 +239,16 @@ parseadas existentes (`era5_serie.nc` y `chunks/*.nc` guardan Dir ya corrompida)
 p. ej. marcar con un atributo de versión de convención y re-parsear/re-descargar si
 falta — y ajustar el test de regresión que fija la conversión actual.
 
-### A2-2 · CRÍTICO — Producto cartesiano año×mes×día sin recorte: la serie incluye fechas fuera del rango pedido
+### A2-2 · CRÍTICO — ✅ CORREGIDO — Producto cartesiano año×mes×día sin recorte: la serie incluía fechas fuera del rango pedido
+
+> **CORREGIDO (etapa B, 2026-07-06):** nuevo helper `_recortar_a_rango` aplicado en
+> `_parsear_serie_nc` y `_parsear_espectro_nc` (ordena por `time`, recorta a
+> `[inicio, fin]` con día final completo y lanza `ValueError` claro si el resultado
+> queda vacío). Cubre serie, espectro, tramos y el camino de subdivisión. Tests:
+> `test_parsear_serie_recorta_al_rango_pedido` y
+> `test_parsear_espectro_recorta_al_rango_pedido`; se corrigió además el mock de
+> `test_descargar_serie_rangos_distintos_no_comparten_cache`, que generaba fechas
+> fuera del rango pedido (cosa que el CDS real no hace). Suite: 144 passed.
 
 `_rango_fechas` (`io_era5.py:406-415`) arma las listas de la petición CDS como
 *conjuntos independientes* de años, meses y días del rango, y el CDS devuelve el
@@ -625,7 +634,10 @@ trabajo para que la regresión con datos reales corra al menos antes de cada ent
 
 ## Hallazgos corregidos (etapa B)
 
-*(se completa en la etapa B: hallazgo → commit)*
+| Hallazgo | Fix | Commit | Suite |
+|----------|-----|--------|-------|
+| A2-1 (+A7-1) — Dir ERA5 invertida 180° | Sin `+180°`; marca `dir_convencion` invalida cachés antiguas; test del bug reemplazado + test de invalidación | `e19abd6` | 142 passed, 8 skipped |
+| A2-2 — Fechas fuera del rango pedido (producto cartesiano CDS) | `_recortar_a_rango` en ambos parsers + guard de serie vacía; 2 tests nuevos y mock corregido | *(ver git log)* | 144 passed, 8 skipped |
 
 ## Prompt para Cursor
 

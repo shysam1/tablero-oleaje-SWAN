@@ -499,10 +499,36 @@ def _longitud_para_grilla(lon, longitudes):
     return lon
 
 
+def _recortar_a_rango(ds, inicio, fin):
+    """
+    Recorta el Dataset al rango de fechas pedido (ambos inclusive, días completos).
+
+    La petición al CDS lista años/meses/días como conjuntos independientes y el
+    servidor devuelve el PRODUCTO CARTESIANO: un rango corto que cruza un cambio
+    de mes/año trae también fechas fuera de [inicio, fin] (p. ej. pedir
+    2024-12-20→2025-01-10 devuelve además pasos de 2024-01 y 2025-12). Sin este
+    recorte esos pasos espurios entraban a la serie y al tablero.
+    """
+    if inicio is None or fin is None or "time" not in ds.coords:
+        return ds
+    s0, s1 = validar_rango_fechas(inicio, fin)
+    ds = ds.sortby("time")
+    # El límite superior cubre el día completo (el sel por string de pandas
+    # trunca s1 a las 00:00; se extiende al último instante del día).
+    t1 = np.datetime64(s1) + np.timedelta64(1, "D") - np.timedelta64(1, "s")
+    recortado = ds.sel(time=slice(np.datetime64(s0), t1))
+    if int(recortado.sizes.get("time", 0)) == 0:
+        raise ValueError(
+            f"La descarga ERA5 no contiene pasos dentro del rango pedido "
+            f"({s0} — {s1}); revisa las fechas o vuelve a descargar.")
+    return recortado
+
+
 def _parsear_serie_nc(ruta, lat, lon, inicio=None, fin=None):
     """
     Abre la descarga de ERA5 (un .nc plano o un .zip con un .nc por 'stream') y
-    devuelve un Dataset(time) con Hs/Tp/Dir (+ viento) en el punto más cercano.
+    devuelve un Dataset(time) con Hs/Tp/Dir (+ viento) en el punto más cercano,
+    recortado al rango [inicio, fin] si se indica.
 
     El CDS nuevo separa olas y atmósfera en .nc distintos —con grillas distintas—,
     así que se selecciona el punto en cada uno antes de unirlos. La coordenada
@@ -517,6 +543,7 @@ def _parsear_serie_nc(ruta, lat, lon, inicio=None, fin=None):
     bruto = xr.merge(partes, compat="override")
     if "valid_time" in bruto.variables:
         bruto = bruto.rename({"valid_time": "time"})
+    bruto = _recortar_a_rango(bruto, inicio, fin)
 
     presentes = {k: v for k, v in _RENOMBRE_SERIE.items() if k in bruto.data_vars}
     if "swh" not in presentes:
@@ -761,6 +788,7 @@ def _parsear_espectro_nc(ruta, lat=None, lon=None, inicio=None, fin=None):
         bruto = bruto.drop_vars(_COORDS_EXTRA, errors="ignore")
     if "valid_time" in bruto.variables:
         bruto = bruto.rename({"valid_time": "time"})
+    bruto = _recortar_a_rango(bruto, inicio, fin)
     d2fd = bruto["d2fd"]
     efth = np.power(10.0, np.asarray(d2fd, float))    # des-logueo; NaN se propaga
     efth = xr.DataArray(

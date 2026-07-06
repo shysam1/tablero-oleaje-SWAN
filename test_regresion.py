@@ -496,6 +496,47 @@ def test_serie_cache_sin_marca_de_convencion_se_descarta(tmp_path):
     assert io_era5._serie_cache_limpia(nueva) is True
 
 
+def test_parsear_serie_recorta_al_rango_pedido(tmp_path):
+    """
+    La petición CDS lista años/meses/días como conjuntos y el servidor devuelve
+    el producto cartesiano: un rango que cruza año nuevo trae fechas espurias
+    (p. ej. 2024-01 y 2025-12). El parser debe recortar a [inicio, fin]
+    (auditoría 2026-07, hallazgo A2-2).
+    """
+    import xarray as xr
+    t = np.array(["2024-01-20", "2024-12-25", "2025-01-05", "2025-12-20"],
+                 dtype="datetime64[ns]")
+    lat = np.array([-37.0]); lon = np.array([-73.5])
+    forma = (len(t), 1, 1)
+    ruta = tmp_path / "serie.nc"
+    xr.Dataset(
+        {"swh": (("valid_time", "latitude", "longitude"), np.full(forma, 2.0)),
+         "pp1d": (("valid_time", "latitude", "longitude"), np.full(forma, 12.0)),
+         "mwd": (("valid_time", "latitude", "longitude"), np.full(forma, 250.0))},
+        coords={"valid_time": t, "latitude": lat, "longitude": lon}).to_netcdf(ruta)
+
+    ds = io_era5._parsear_serie_nc(ruta, -37.0, -73.5,
+                                   inicio="2024-12-20", fin="2025-01-10")
+    fechas = ds["time"].values.astype("datetime64[D]").astype(str).tolist()
+    assert fechas == ["2024-12-25", "2025-01-05"]
+
+
+def test_parsear_espectro_recorta_al_rango_pedido(tmp_path):
+    """El espectro d2fd usa la misma petición cartesiana: mismo recorte que la serie."""
+    import xarray as xr
+    t = np.array(["2024-01-20", "2024-12-25", "2025-01-05", "2025-12-20"],
+                 dtype="datetime64[ns]")
+    freqs = np.array([0.05, 0.1]); dirs = np.array([7.5, 22.5])
+    ruta = tmp_path / "espectro.nc"
+    xr.Dataset(
+        {"d2fd": (("valid_time", "frequency", "direction"),
+                  np.full((len(t), 2, 2), -1.0))},
+        coords={"valid_time": t, "frequency": freqs, "direction": dirs}).to_netcdf(ruta)
+
+    ds = io_era5._parsear_espectro_nc(ruta, inicio="2024-12-20", fin="2025-01-10")
+    assert ds.sizes["time"] == 2
+
+
 def test_seguridad_rechaza_nombre_caso_con_espacios():
     import seguridad
     with pytest.raises(ValueError):
@@ -725,12 +766,25 @@ def test_nombre_fuente_incluye_rango_fechas():
 
 def test_descargar_serie_rangos_distintos_no_comparten_cache(monkeypatch, tmp_path):
     """Dos periodos en el mismo punto usan carpetas distintas."""
+    import xarray as xr
     llamadas = {"n": 0}
 
     class _ClienteFalso:
         def retrieve(self, dataset, peticion, destino):
             llamadas["n"] += 1
-            _nc_serie_sintetico(destino)
+            # Fechas DENTRO del rango pedido (como el CDS real): con el recorte
+            # temporal de A2-2, datos fuera del rango quedarían vacíos.
+            anio, mes = peticion["year"][0], int(peticion["month"][0])
+            t = np.array([f"{anio}-{mes:02d}-15T00", f"{anio}-{mes:02d}-15T03"],
+                         dtype="datetime64[ns]")
+            lat = np.array([-36.75, -37.25]); lon = np.array([-73.75, -73.25])
+            forma = (len(t), len(lat), len(lon))
+            xr.Dataset(
+                {"swh": (("time", "latitude", "longitude"), np.full(forma, 2.5)),
+                 "pp1d": (("time", "latitude", "longitude"), np.full(forma, 12.0)),
+                 "mwd": (("time", "latitude", "longitude"), np.full(forma, 225.0))},
+                coords={"time": t, "latitude": lat, "longitude": lon},
+            ).to_netcdf(destino)
 
     monkeypatch.setattr(io_era5, "_cliente", lambda: _ClienteFalso())
     monkeypatch.setattr(rutas, "RAIZ_SALIDAS", tmp_path)
