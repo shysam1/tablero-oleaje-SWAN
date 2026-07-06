@@ -263,6 +263,9 @@ def validar_rango_fechas(inicio, fin):
         raise ValueError("Fechas de inicio/fin no válidas (usa AAAA-MM-DD).")
     if t1 < t0:
         raise ValueError("La fecha fin debe ser igual o posterior a inicio.")
+    hoy = np.datetime64("today", "D")
+    if t1 > hoy:
+        raise ValueError("ERA5 no tiene datos futuros.")
     return s0, s1
 
 
@@ -620,21 +623,6 @@ def ruta_cache_serie(lat, lon, inicio, fin):
     return carpeta, carpeta / "era5_serie.nc"
 
 
-def _cache_utilizable(ruta):
-    """
-    True si el .nc cacheado existe, no está vacío y se puede abrir. Una descarga
-    interrumpida puede dejar un .nc de 0 bytes o truncado; confiar en él daría un
-    error críptico aguas abajo (o datos a medias), así que se re-descarga.
-    """
-    try:
-        if not ruta.exists() or ruta.stat().st_size == 0:
-            return False
-        _abrir_descarga_cds(ruta)          # abre el .nc plano o el .zip del CDS nuevo
-        return True
-    except Exception:
-        return False
-
-
 def _retrieve_atomico(dataset, peticion, destino, log_fn=None):
     """
     Descarga a un archivo temporal y lo renombra al terminar. Así una descarga
@@ -711,7 +699,8 @@ def descargar_serie(lat, lon, inicio, fin, incluir_viento=False, log_fn=None):
     if _serie_cache_limpia(destino):
         if log_fn:
             log_fn(f"Usando caché: {destino}")
-        return xr.open_dataset(destino)
+        with xr.open_dataset(destino) as raw:
+            return raw.load()
 
     # Caché antigua: un único .nc crudo del CDS en la ruta final (pre-tramos).
     if destino.exists() and not (carpeta / "chunks").is_dir():
@@ -968,7 +957,8 @@ def descargar_espectro(lat, lon, inicio, fin, log_fn=None):
     if _espectro_cache_limpia(destino):
         if log_fn:
             log_fn(f"Usando caché de espectro: {destino}")
-        return xr.open_dataset(destino)
+        with xr.open_dataset(destino) as raw:
+            return raw.load()
 
     # Caché antigua: .nc crudo del CDS sin parsear en la ruta final.
     if destino.exists() and not (carpeta / "chunks_espectro").is_dir():

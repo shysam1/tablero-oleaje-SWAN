@@ -600,6 +600,13 @@ def test_validar_rango_fechas_rechaza_fin_anterior():
         io_era5.validar_rango_fechas("2024-07-29", "2024-07-28")
 
 
+def test_validar_rango_fechas_rechaza_futuro():
+    """A2-7: ERA5 no tiene datos posteriores a hoy."""
+    futuro = (np.datetime64("today", "D") + np.timedelta64(30, "D")).astype(str)[:10]
+    with pytest.raises(ValueError, match="futuros"):
+        io_era5.validar_rango_fechas("2024-01-01", futuro)
+
+
 def test_validar_caso_rechaza_borde_sin_tp_dir():
     errores, _ = swan_builder.validar_caso(
         {"xpc": 0, "ypc": 0, "xlenc": 1000, "ylenc": 1000, "mxc": 10, "myc": 10},
