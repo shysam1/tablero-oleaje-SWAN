@@ -310,11 +310,11 @@ def leer_espectro_swan(carpeta, archivo=None):
 
     if matriz is None:
         return None
-    densidad = matriz * factor
+    densidad = matriz * factor * (180.0 / np.pi)
     densidad[np.isclose(matriz, excepcion)] = np.nan
     ds = xr.Dataset({"Efth": (("freq", "dir"), densidad)},
                     coords={"freq": freqs, "dir": dirs})
-    ds["Efth"].attrs = {"long_name": "Densidad de energía", "units": "m2/Hz/deg"}
+    ds["Efth"].attrs = {"long_name": "Densidad de energía", "units": "m2/Hz/rad"}
     ds["freq"].attrs = {"long_name": "Frecuencia", "units": "Hz"}
     ds["dir"].attrs = {"long_name": "Dirección (cartesiana)", "units": "deg"}
     return ds

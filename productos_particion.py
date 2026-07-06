@@ -72,7 +72,7 @@ def dibujar_polar(ax, espectro, meta=None):
     theta = np.deg2rad(dirs)
     malla_t, malla_r = np.meshgrid(theta, freqs)
     pm = ax.pcolormesh(malla_t, malla_r, densidad, shading="auto", cmap="viridis")
-    ax.figure.colorbar(pm, ax=ax, label="S(f,θ) [m²/Hz/°]", shrink=0.7, pad=0.1)
+    ax.figure.colorbar(pm, ax=ax, label="S(f,θ) [m²/Hz/rad]", shrink=0.7, pad=0.1)
 
     familias = particion_espectral.particionar(densidad, freqs, dirs)
     for fam in familias:

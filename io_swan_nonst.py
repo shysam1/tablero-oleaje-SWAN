@@ -210,7 +210,7 @@ def leer_espectro_temporal(ruta):
                 filas.append(fila)
             mat = np.array(filas)
             with np.errstate(invalid="ignore"):
-                dens = mat * factor
+                dens = mat * factor * (180.0 / np.pi)
                 dens[np.isclose(mat, excepcion)] = np.nan
             cubos.append(dens)
             i = base + nf
@@ -227,7 +227,7 @@ def leer_espectro_temporal(ruta):
         {"Efth": (("time", "freq", "dir"), np.stack(cubos))},
         coords={"time": np.array(tiempos, dtype="datetime64[ns]"),
                 "freq": freqs, "dir": dirs})
-    ds["Efth"].attrs = {"long_name": "Densidad de energía", "units": "m2/Hz/deg"}
+    ds["Efth"].attrs = {"long_name": "Densidad de energía", "units": "m2/Hz/rad"}
     ds["freq"].attrs = {"long_name": "Frecuencia", "units": "Hz"}
     ds["dir"].attrs = {"long_name": "Dirección (cartesiana)", "units": "deg"}
     return ds

@@ -1717,6 +1717,30 @@ def test_espectro_swan_truncado_es_error(tmp_path):
         io_swan.leer_espectro_swan(esp)
 
 
+def test_espectro_swan_conversion_deg_a_rad_hs_coherente(tmp_path):
+    """A3-1: lectura SWAN convierte m²/Hz/° a rad; Hs = 4√m₀ coherente."""
+    E0 = 1.0
+    nd = 24
+    dirs = [i * 15.0 for i in range(nd)]
+    nf = 1
+    freq = 0.1
+    lineas = ["AFREQ", str(nf), str(freq), "CDIR", str(nd)]
+    lineas.extend(str(d) for d in dirs)
+    lineas.extend(["FACTOR", "1.0", " ".join([str(E0)] * nd)])
+    esp = tmp_path / "spectro.dat"
+    esp.write_text("\n".join(lineas) + "\n")
+    ds = io_swan.leer_espectro_swan(esp)
+    assert ds["Efth"].attrs["units"] == "m2/Hz/rad"
+    densidad = ds["Efth"].values
+    ddir = np.deg2rad(15.0)
+    dfreq = np.array([freq])
+    m0 = particion_espectral._m0(densidad, dfreq, ddir)
+    m0_analitico = E0 * freq * 360.0
+    assert m0 == pytest.approx(m0_analitico, rel=0.01)
+    hs = 4.0 * np.sqrt(m0)
+    assert hs == pytest.approx(4.0 * np.sqrt(m0_analitico), rel=0.01)
+
+
 def test_espectro_temporal_truncado_es_error(tmp_path):
     """SPEC2D temporal con la matriz truncada → ValueError, no IndexError."""
     esp = tmp_path / "spectro_temporal.dat"
