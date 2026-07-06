@@ -63,3 +63,10 @@ def test_derivar_borde_era5_desde_cache(tmp_path, monkeypatch):
     assert ses["step"] == 1
     motor_web.limpiar_sesion_wizard()
     assert motor_web.cargar_sesion_wizard() is None
+
+
+def test_error_tarea_runtimeerror_y_keyerror():
+    from api_web import Api
+    api = Api()
+    assert api._error_tarea(RuntimeError("no hay swan")) == "no hay swan"
+    assert api._error_tarea(KeyError("x")) == "KeyError"

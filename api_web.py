@@ -62,7 +62,7 @@ class Api:
 
     def _error_tarea(self, exc):
         """Mensaje seguro para la UI (sin rutas ni trazas internas)."""
-        if isinstance(exc, ValueError):
+        if isinstance(exc, (ValueError, RuntimeError)):
             return str(exc)
         return exc.__class__.__name__
 
