@@ -39,6 +39,7 @@ def test_derivar_borde_era5_desde_cache(tmp_path, monkeypatch):
         {"Hs": ("time", [1.5, 2.5, 3.0]), "Tp": ("time", [10.0, 11.0, 12.0]),
          "Dir": ("time", [270.0, 280.0, 290.0])},
         coords={"time": t},
+        attrs={"dir_convencion": "procedencia"},
     )
     _, nc = io_era5.ruta_cache_serie(-37.0, -73.5, "2020-01-01", "2022-12-31")
     nc.parent.mkdir(parents=True, exist_ok=True)

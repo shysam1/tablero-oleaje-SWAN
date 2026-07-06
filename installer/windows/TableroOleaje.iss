@@ -11,7 +11,7 @@
 ; =============================================================================
 
 #define MyAppName "Tablero de Oleaje"
-#define MyAppVersion "1.0.0"
+#define MyAppVersion "1.0.1"
 #define MyAppPublisher "Tablero de Oleaje"
 #define MyAppExeName "launch_windows.bat"
 
@@ -24,10 +24,10 @@ AppName={#MyAppName}
 AppVersion={#MyAppVersion}
 AppVerName={#MyAppName} {#MyAppVersion}
 AppPublisher={#MyAppPublisher}
-DefaultDirName={autopf}\Tablero de Oleaje
+DefaultDirName={localappdata}\Tablero de Oleaje
 DefaultGroupName=Tablero de Oleaje
 DisableProgramGroupPage=yes
-PrivilegesRequired=admin
+PrivilegesRequired=lowest
 ; El .exe se genera junto a este script, en  installer\windows
 OutputDir=.
 OutputBaseFilename=Tablero_Oleaje_Setup_{#MyAppVersion}

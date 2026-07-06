@@ -15,6 +15,7 @@ Variables de entorno opcionales (solo en tu máquina, no van al repo):
 """
 
 import os
+import sys
 from pathlib import Path
 
 import numpy as np
@@ -25,6 +26,7 @@ import io_swan_nonst
 import io_oleaje
 import io_era5
 import geo_malla
+import rutas
 import seguridad
 import swan_builder
 import swan_runner
@@ -44,6 +46,18 @@ RUTA_OLEAJE = _ruta_datos("TABLERO_DATOS_OLEAJE")
 def _saltar_si_falta(ruta):
     if not Path(ruta).exists():
         pytest.skip(f"datos de prueba no disponibles: {ruta}")
+
+
+def test_raiz_salidas_fallback_localappdata(monkeypatch, tmp_path):
+    """A6-1: salidas bajo datos de usuario si el código no es escribible."""
+    datos_usuario = tmp_path / "datos_usuario"
+    monkeypatch.setattr(rutas, "_raiz_datos_usuario", lambda: datos_usuario)
+
+    monkeypatch.setattr(rutas, "_directorio_escribible", lambda d: False)
+    assert rutas._raiz_salidas() == datos_usuario / "salidas"
+
+    monkeypatch.setattr(rutas, "_directorio_escribible", lambda d: True)
+    assert rutas._raiz_salidas() == Path(rutas.__file__).parent / "salidas"
 
 
 # --------------------------- SWAN estacionario ---------------------------

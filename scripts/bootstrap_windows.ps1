@@ -23,11 +23,34 @@ $proyecto = Split-Path -Parent $PSScriptRoot
 Set-Location $proyecto
 
 # --- Preparar log ---
-$salidas = Join-Path $proyecto "salidas"
-if (-not (Test-Path $salidas)) {
-    New-Item -ItemType Directory -Path $salidas -Force | Out-Null
+function Test-Escribible {
+    param([string]$dir)
+    try {
+        if (-not (Test-Path $dir)) {
+            New-Item -ItemType Directory -Path $dir -Force | Out-Null
+        }
+        $probe = Join-Path $dir ".test_escritura"
+        [System.IO.File]::WriteAllText($probe, "")
+        Remove-Item $probe -Force
+        return $true
+    } catch {
+        return $false
+    }
 }
-$logFile = Join-Path $salidas "install.log"
+
+if (Test-Escribible $proyecto) {
+    $salidas = Join-Path $proyecto "salidas"
+    if (-not (Test-Path $salidas)) {
+        New-Item -ItemType Directory -Path $salidas -Force | Out-Null
+    }
+    $logFile = Join-Path $salidas "install.log"
+} else {
+    $datos = Join-Path $env:LOCALAPPDATA "Tablero de Oleaje"
+    if (-not (Test-Path $datos)) {
+        New-Item -ItemType Directory -Path $datos -Force | Out-Null
+    }
+    $logFile = Join-Path $datos "install.log"
+}
 
 function Log {
     param([string]$msg)
