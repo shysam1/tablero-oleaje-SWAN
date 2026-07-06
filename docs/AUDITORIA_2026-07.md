@@ -551,7 +551,19 @@ Python 3.11+ es consistente entre `.iss`, bootstrap y guías. Los lanzadores de
 desarrollo (zip/repo clonado) están bien: venv local, mensajes de error con
 referencia al log, `pause` para que la consola no se cierre.
 
-### A6-1 · CRÍTICO — La app instalada con el `.exe` en Program Files no puede funcionar sin elevación
+### A6-1 · CRÍTICO — DIFERIDO A CURSOR — La app instalada con el `.exe` en Program Files no puede funcionar sin elevación
+
+> **DIFERIDO A CURSOR (etapa B, 2026-07-06):** el fix completo tiene dos mitades
+> inseparables: (a) instalación per-user en el `.iss` (`PrivilegesRequired=lowest`
+> + `DefaultDirName={localappdata}\Tablero de Oleaje`) que exige **recompilar con
+> Inno Setup 6 y probar el instalador en una máquina real** (elevación, primer
+> arranque, SmartScreen) — imposible de verificar en esta sesión —, y (b) fallback
+> de `rutas.py`/`config.py` a `%LOCALAPPDATA%` cuando la carpeta del código no es
+> escribible. Hacer solo (b) no desbloquea nada: el bootstrap
+> (`bootstrap_windows.ps1:26-29`) falla antes, al crear `salidas\install.log` y
+> `.venv` bajo Program Files. Siguiendo la regla de no hacer fixes críticos a
+> medias, el hallazgo completo (a+b) queda especificado como Tarea 1 del «Prompt
+> para Cursor», con criterio de éxito y pasos de verificación manual.
 
 Cadena del problema (instalador Windows v1.0.0, ya **publicado** en GitHub Releases):
 
@@ -648,7 +660,8 @@ trabajo para que la regresión con datos reales corra al menos antes de cada ent
 |----------|-----|--------|-------|
 | A2-1 (+A7-1) — Dir ERA5 invertida 180° | Sin `+180°`; marca `dir_convencion` invalida cachés antiguas; test del bug reemplazado + test de invalidación | `e19abd6` | 142 passed, 8 skipped |
 | A2-2 — Fechas fuera del rango pedido (producto cartesiano CDS) | `_recortar_a_rango` en ambos parsers + guard de serie vacía; 2 tests nuevos y mock corregido | `f0fef4e` | 144 passed, 8 skipped |
-| A2-3 — Espectro d2fd con ejes índice | Reconstrucción de ejes físicos + dirección a procedencia + unidades `m2/Hz/rad` + marca `ejes` invalida cachés; 2 tests nuevos | *(ver git log)* | 146 passed, 8 skipped |
+| A2-3 — Espectro d2fd con ejes índice | Reconstrucción de ejes físicos + dirección a procedencia + unidades `m2/Hz/rad` + marca `ejes` invalida cachés; 2 tests nuevos | `38ac6af` | 146 passed, 8 skipped |
+| A6-1 — Instalador Windows en Program Files | **DIFERIDO A CURSOR**: requiere recompilar y probar el `.exe` en máquina real; el fallback de runtime solo no desbloquea el primer arranque | — | Tarea 1 del Prompt para Cursor |
 
 ## Prompt para Cursor
 
