@@ -91,6 +91,9 @@ def construir_dataset(df, atributos_globales=None):
         ds[v].attrs.update(ATRIBUTOS_VARIABLES[v])
     if atributos_globales:
         ds.attrs.update(atributos_globales)
+    t = ds["time"].values
+    if t.size > 1 and not np.all(t[1:] >= t[:-1]):
+        ds = ds.sortby("time")
     return ds
 
 

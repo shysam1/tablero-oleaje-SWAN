@@ -57,11 +57,16 @@ def _chequeo_tiempo(ds):
     # mode()[0] reventaría con IndexError. No hay nada que evaluar.
     if len(t) < 2:
         return 0, f"serie de {len(t)} paso(s): sin intervalos que evaluar"
+    inversiones = int((t[1:] < t[:-1]).sum())
     dif = t[1:] - t[:-1]
     paso = pd.Series(dif).mode()[0]          # paso de muestreo más frecuente
     duplicados = int((dif == pd.Timedelta(0)).sum())
     huecos = int((dif > paso).sum())
-    return huecos + duplicados, f"{huecos} huecos y {duplicados} duplicados (paso {paso})"
+    partes = []
+    if inversiones:
+        partes.append(f"{inversiones} paso(s) no monótonos")
+    partes.append(f"{huecos} huecos y {duplicados} duplicados (paso {paso})")
+    return huecos + duplicados + inversiones, "; ".join(partes)
 
 
 # Registro de chequeos: cada uno declara las variables que requiere.

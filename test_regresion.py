@@ -1243,6 +1243,28 @@ def test_excedencia_percentiles_ignoran_nan():
     assert p50 < p90 < p99
 
 
+def test_construir_dataset_ordena_time_y_span_correcto():
+    """A1-2: filas barajadas se ordenan y _span_dias refleja el rango real."""
+    import pandas as pd
+    import productos
+    n = 400
+    fechas = pd.date_range("2022-01-01", periods=n, freq="D")
+    df = pd.DataFrame({
+        "anio": fechas.year,
+        "mes": fechas.month,
+        "dia": fechas.day,
+        "hora": 12,
+        "Hs": 1.5,
+        "Tp": 10.0,
+        "Dir": 270.0,
+    })
+    df = df.sample(frac=1.0, random_state=42).reset_index(drop=True)
+    ds = io_oleaje.construir_dataset(df)
+    t = ds["time"].values
+    assert np.all(t[1:] >= t[:-1])
+    assert productos._span_dias(ds) >= n - 2
+
+
 def test_registro_productos_detecta_particion_con_efth():
     import xarray as xr
     import productos
