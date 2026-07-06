@@ -23,8 +23,8 @@ import seguridad
 
 
 def swan_disponible():
-    """True si `swanrun`/`swan.exe` está accesible en el PATH."""
-    return shutil.which("swanrun") is not None or shutil.which("swan") is not None
+    """True si `swanrun` está accesible en el PATH."""
+    return shutil.which("swanrun") is not None
 
 
 def _validar_nombre_caso(caso):
@@ -150,7 +150,12 @@ def correr_caso(carpeta, caso, log=None, on_proc=None):
     # caso como argumento aparte (lista), de modo que no se interpola en una línea
     # de comandos. swanrun suele ser un .bat, que necesita cmd.exe para ejecutarse;
     # como el nombre del caso ya está saneado, no puede inyectar metacaracteres.
-    ejecutable = shutil.which("swanrun") or "swanrun"
+    if shutil.which("swanrun") is None:
+        if shutil.which("swan") is not None:
+            raise RuntimeError(
+                "Se encontró swan.exe pero falta swanrun; agrega el script swanrun al PATH.")
+        raise RuntimeError("No se encontró swanrun en el PATH.")
+    ejecutable = shutil.which("swanrun")
     if ejecutable.lower().endswith((".bat", ".cmd")):
         comando = ["cmd", "/c", ejecutable, caso]
     else:

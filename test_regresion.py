@@ -187,6 +187,13 @@ def test_mapeo_variables_swan():
     assert io_swan._var_de_nombre("TPAR1.txt") in (None, "Tp")  # se filtra por tamaño
 
 
+def test_correr_caso_sin_swanrun_con_swan_exe(tmp_path, monkeypatch):
+    """A3-2: swan.exe sin swanrun debe fallar con mensaje claro."""
+    monkeypatch.setattr(swan_runner.shutil, "which", lambda cmd: "swan.exe" if cmd == "swan" else None)
+    with pytest.raises(RuntimeError, match="swanrun"):
+        swan_runner.correr_caso(tmp_path, "caso1")
+
+
 def test_builder_genera_bloques_clave():
     txt = swan_builder.construir_swn(
         nombre="T", malla={"xpc": 0., "ypc": 0., "xlenc": 1000, "ylenc": 1000,

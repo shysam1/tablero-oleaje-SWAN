@@ -113,7 +113,7 @@ def validar_caso(malla, batimetria, bordes, carpeta=None, requiere_bordes=True):
 
 def construir_swn(nombre, malla, batimetria, bordes, salidas=("Hs", "Tp", "Dir"),
                   estacionario=True, tiempo=None, friccion=True, setup=True,
-                  viento=False, cuadruples=False,
+                  viento=False, cuadruples=False, gamma_rotura=0.29,
                   nido=None, bou_nest=None, punto_espectral=None):
     """
     Devuelve el texto de un .swn.
@@ -166,7 +166,8 @@ def construir_swn(nombre, malla, batimetria, bordes, salidas=("Hs", "Tp", "Dir")
         L.append("OFF WINDGROWTH")
     if not cuadruples:
         L.append("OFF QUAD")
-    L.append("BREAKING CON 1.0 0.29")
+    # 0,29 replica la plantilla del curso Coronel; el default de SWAN es 0,73
+    L.append(f"BREAKING CON 1.0 {gamma_rotura}")
     if friccion:
         L.append("FRICTION")
     if setup:
