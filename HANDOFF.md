@@ -13,6 +13,23 @@
 
 ## Registro de cambios (más reciente primero)
 
+### 2026-07-06 · Cierre hallazgos auditoría 2026-07 (Cursor)
+*Qué/por qué:* ejecutadas las 11 tareas del «Prompt para Cursor» en
+`docs/AUDITORIA_2026-07.md`: A6-1 (instalador per-user + fallback
+`LOCALAPPDATA`), A1-1/A1-2, A2-4+A5-3 (PAT CDS), A3-1 (espectros SWAN °→rad),
+A4-1, menores áreas 1–7 (11 commits + este cierre). Suite:
+`pytest test_regresion.py test_asistente.py test_nesting.py test_motor_web.py -q`
+→ **159 passed, 8 skipped**.
+*Archivos:* `rutas.py`, `config.py`, `installer/windows/TableroOleaje.iss`,
+`scripts/bootstrap_windows.ps1`, `productos.py`, `io_oleaje.py`, `validacion.py`,
+`io_era5.py`, `io_swan.py`, `io_swan_nonst.py`, `productos_particion.py`,
+`api_web.py`, `swan_runner.py`, `swan_builder.py`, `tablero_oleaje.py`,
+`ui/js/*.js`, `test_regresion.py`, `test_motor_web.py`, `CLAUDE.md`, `AGENTS.md`,
+`docs/AUDITORIA_2026-07.md`.
+*Notas:* **A6-1 pendiente prueba manual del usuario:** recompilar
+`empaquetar_instalador.bat` y probar el Setup v1.0.1 en máquina sin permisos de
+admin antes de re-publicar el Release. No se hizo `git push`.
+
 ### 2026-07-06 · Auditoría integral + fixes críticos ERA5 (Claude Code)
 *Qué/por qué:* auditoría completa de 7 áreas (motor, ERA5, cadena SWAN, puente web,
 UI, empaquetado, tests) documentada en **`docs/AUDITORIA_2026-07.md`** (resumen
