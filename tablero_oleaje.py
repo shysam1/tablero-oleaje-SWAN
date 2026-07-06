@@ -102,7 +102,7 @@ def generar_tablero(ruta_entrada, ruta_nc=None, ruta_png=None, cargar_fn=None):
                 "de arriba). Verifica que la fuente incluya Hs/Tp/Dir.")
 
         fig = _construir_figura(ds, disponibles, omitidos=omitidos or None)
-        etiqueta = destino.name if destino != rutas.carpeta_salida(ruta_entrada.stem) else ruta_entrada.stem
+        etiqueta = destino.name
         ruta_png = Path(ruta_png) if ruta_png else destino / f"tablero_{etiqueta}.png"
         fig.savefig(ruta_png, dpi=200, bbox_inches="tight")
         plt.close(fig)

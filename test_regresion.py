@@ -1267,6 +1267,24 @@ def test_excedencia_percentiles_ignoran_nan():
     assert p50 < p90 < p99
 
 
+def test_rosa_normaliza_hs_y_dir_finitos():
+    """A1-3: rosa con Dir NaN normaliza solo registros con Hs y Dir finitos."""
+    n_sec = 16
+    bordes = np.linspace(0, 360, n_sec + 1)
+    hs = np.array([1.0, 2.0, 3.0, np.nan, 1.5])
+    dir_ = np.array([0.0, 90.0, 180.0, 270.0, np.nan])
+    r = {"hs": hs, "dir": dir_}
+    n_validos = np.isfinite(r["hs"]) & np.isfinite(r["dir"])
+    n_total = max(int(n_validos.sum()), 1)
+    clases = [0, 1, 2, 3, 4, np.inf]
+    total_pct = 0.0
+    for i in range(len(clases) - 1):
+        mask = n_validos & (r["hs"] >= clases[i]) & (r["hs"] < clases[i + 1])
+        conteo, _ = np.histogram(r["dir"][mask], bins=bordes)
+        total_pct += conteo.sum() / n_total * 100
+    assert total_pct == pytest.approx(100.0, abs=0.1)
+
+
 def test_construir_dataset_ordena_time_y_span_correcto():
     """A1-2: filas barajadas se ordenan y _span_dias refleja el rango real."""
     import pandas as pd

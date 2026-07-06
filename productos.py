@@ -273,11 +273,12 @@ def _dib_rosa(ax, r):
     colores = plt.cm.viridis(np.linspace(0, 1, len(clases) - 1))
     ancho = 2 * np.pi / n_sec
     centros = np.deg2rad((bordes[:-1] + bordes[1:]) / 2)
-    n_total = max(int(np.isfinite(r["hs"]).sum()), 1)
+    n_validos = np.isfinite(r["hs"]) & np.isfinite(r["dir"])
+    n_total = max(int(n_validos.sum()), 1)
 
     fondo = np.zeros(n_sec)
     for i in range(len(clases) - 1):
-        mask = (r["hs"] >= clases[i]) & (r["hs"] < clases[i + 1])
+        mask = n_validos & (r["hs"] >= clases[i]) & (r["hs"] < clases[i + 1])
         conteo, _ = np.histogram(r["dir"][mask], bins=bordes)
         frec = conteo / n_total * 100
         etiqueta = (f"{clases[i]:.0f}–{clases[i + 1]:.0f} m"
@@ -297,6 +298,8 @@ def _dib_rosa(ax, r):
 def _calc_jonswap(ds):
     hs = float(ds["Hs"].mean())
     tp = float(ds["Tp"].mean())
+    if not np.isfinite(hs) or hs <= 0:
+        raise ValueError("Hs medio inválido para reconstruir JONSWAP.")
     if not np.isfinite(tp) or tp <= 0:
         raise ValueError("Tp medio inválido para reconstruir JONSWAP.")
     fp = 1.0 / tp
@@ -460,9 +463,9 @@ def evaluar(ds):
         if disponible:
             try:
                 resultado = p["calcular"](ds)
-            except (ValueError, ZeroDivisionError, FloatingPointError):
+            except (ValueError, ZeroDivisionError, FloatingPointError, KeyError) as e:
                 disponible = False
-                faltan = [p.get("motivo_inaplicable", "datos insuficientes")]
+                faltan = [str(e) or p.get("motivo_inaplicable", "datos insuficientes")]
         informe.append({
             "nombre": p["nombre"], "disponible": disponible, "faltan": faltan,
             "proyeccion": p["proyeccion"], "dibujar": p["dibujar"],
