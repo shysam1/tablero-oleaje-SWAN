@@ -1228,6 +1228,21 @@ def test_excedencia_incluye_percentiles():
     assert r["percentiles"][50] < r["percentiles"][99]
 
 
+def test_excedencia_percentiles_ignoran_nan():
+    """A1-1: nanpercentile evita NaN en P50/P90/P99 con huecos en Hs."""
+    import xarray as xr
+    import productos
+    hs = np.linspace(1.0, 2.0, 100)
+    hs[50] = np.nan
+    t = np.arange("2024-01-01", "2024-01-05", dtype="datetime64[h]")
+    t = np.resize(t, len(hs))
+    ds = xr.Dataset({"Hs": ("time", hs)}, coords={"time": t})
+    r = productos._calc_excedencia(ds)
+    p50, p90, p99 = r["percentiles"][50], r["percentiles"][90], r["percentiles"][99]
+    assert np.isfinite(p50) and np.isfinite(p90) and np.isfinite(p99)
+    assert p50 < p90 < p99
+
+
 def test_registro_productos_detecta_particion_con_efth():
     import xarray as xr
     import productos

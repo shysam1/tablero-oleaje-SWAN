@@ -137,7 +137,7 @@ def _calc_excedencia(ds):
         raise ValueError("No hay Hs finitos para la curva de excedencia.")
     prob = np.arange(1, hs.size + 1) / hs.size * 100
     crudo = ds["Hs"].values
-    percentiles = {p: float(np.percentile(crudo, p)) for p in (50, 90, 99)}
+    percentiles = {p: float(np.nanpercentile(crudo, p)) for p in (50, 90, 99)}
     return {"hs": hs, "prob": prob, "percentiles": percentiles}
 
 
