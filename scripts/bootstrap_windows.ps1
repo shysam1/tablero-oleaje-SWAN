@@ -1,136 +1,61 @@
-<#
-=============================================================================
- Tablero de Oleaje - bootstrap (Windows)
-=============================================================================
- Logica unica de preparacion del entorno. Lo usan tanto el instalador
- (primer arranque desde Archivos de programa) como el lanzador clasico.
-
- Responsabilidades:
-   1. Situarse en la raiz del proyecto (carpeta padre de \scripts).
-   2. Localizar Python 3.11+ (py -3, luego python).
-   3. Crear .venv si no existe.
-   4. Instalar/actualizar dependencias de requirements.txt.
-   5. Registrar todo en salidas\install.log.
-
- Devuelve codigo 0 si el entorno quedo listo; distinto de 0 si fallo.
-=============================================================================
-#>
-
+<# Prepara un entorno local; reintenta instalaciones incompletas y no usa la red si esta listo. #>
 $ErrorActionPreference = "Stop"
-
-# --- Raiz del proyecto: carpeta padre de este script ---
 $proyecto = Split-Path -Parent $PSScriptRoot
-Set-Location $proyecto
-
-# --- Preparar log ---
-function Test-Escribible {
-    param([string]$dir)
-    try {
-        if (-not (Test-Path $dir)) {
-            New-Item -ItemType Directory -Path $dir -Force | Out-Null
-        }
-        $probe = Join-Path $dir ".test_escritura"
-        [System.IO.File]::WriteAllText($probe, "")
-        Remove-Item $probe -Force
-        return $true
-    } catch {
-        return $false
-    }
+Set-Location -LiteralPath $proyecto
+$salidas = Join-Path $proyecto "salidas"
+try { New-Item -ItemType Directory -Path $salidas -Force | Out-Null } catch {
+    throw "Extrae o mueve la aplicacion a una carpeta con permiso de escritura del usuario. $($_.Exception.Message)"
 }
-
-if (Test-Escribible $proyecto) {
-    $salidas = Join-Path $proyecto "salidas"
-    if (-not (Test-Path $salidas)) {
-        New-Item -ItemType Directory -Path $salidas -Force | Out-Null
-    }
-    $logFile = Join-Path $salidas "install.log"
-} else {
-    $datos = Join-Path $env:LOCALAPPDATA "Tablero de Oleaje"
-    if (-not (Test-Path $datos)) {
-        New-Item -ItemType Directory -Path $datos -Force | Out-Null
-    }
-    $logFile = Join-Path $datos "install.log"
-}
-
-function Log {
-    param([string]$msg)
-    $ts = Get-Date -Format "yyyy-MM-dd HH:mm:ss"
-    $linea = "[$ts] $msg"
+$logFile = Join-Path $salidas "install.log"
+function Log([string]$mensaje) {
+    $linea = "[$(Get-Date -Format 'yyyy-MM-dd HH:mm:ss')] $mensaje"
     Write-Host $linea
-    Add-Content -Path $logFile -Value $linea -Encoding UTF8
+    Add-Content -LiteralPath $logFile -Value $linea -Encoding UTF8
 }
-
-function Fallar {
-    param([string]$msg)
-    Log "ERROR: $msg"
-    exit 1
-}
-
-Log "===== Preparando entorno de Tablero de Oleaje ====="
-Log "Proyecto: $proyecto"
-
-# --- Localizar Python 3.11+ ---
-$pyCmd = $null
-$pyArgs = @()
-
-$tienePy = Get-Command py -ErrorAction SilentlyContinue
-if ($tienePy) {
-    $ver = & py -3 -c "import sys; print(f'{sys.version_info.major}.{sys.version_info.minor}')" 2>$null
-    if ($LASTEXITCODE -eq 0 -and $ver) {
-        $pyCmd = "py"
-        $pyArgs = @("-3")
-    }
-}
-
-if (-not $pyCmd) {
-    $tienePython = Get-Command python -ErrorAction SilentlyContinue
-    if ($tienePython) {
-        $pyCmd = "python"
-        $pyArgs = @()
-    }
-}
-
-if (-not $pyCmd) {
-    Log "No se encontro Python 3."
-    Log "Instala Python 3.11 o superior desde https://www.python.org/downloads/"
-    Log "En el instalador marca 'Add python.exe to PATH'."
-    Fallar "Python no disponible en PATH."
-}
-
-# --- Verificar version minima (3.11) ---
-$major = & $pyCmd @pyArgs -c "import sys; print(sys.version_info.major)" 2>$null
-$minor = & $pyCmd @pyArgs -c "import sys; print(sys.version_info.minor)" 2>$null
-$verCompleta = & $pyCmd @pyArgs --version 2>$null
-Log "Python detectado: $verCompleta (via '$pyCmd $($pyArgs -join ' ')')"
-
-if (-not $major) { Fallar "No se pudo determinar la version de Python." }
-if ([int]$major -lt 3 -or ([int]$major -eq 3 -and [int]$minor -lt 11)) {
-    Fallar "Se requiere Python 3.11 o superior (detectado: $verCompleta)."
-}
-
-# --- Crear entorno virtual si no existe ---
+function Fallar([string]$mensaje) { Log "ERROR: $mensaje"; exit 1 }
 $venvPython = Join-Path $proyecto ".venv\Scripts\python.exe"
-if (-not (Test-Path $venvPython)) {
-    Log "Creando entorno virtual en .venv ..."
-    & $pyCmd @pyArgs -m venv .venv
-    if ($LASTEXITCODE -ne 0 -or -not (Test-Path $venvPython)) {
-        Fallar "No se pudo crear el entorno virtual (.venv)."
+$estado = Join-Path $PSScriptRoot "estado_entorno.py"
+$requisitos = Join-Path $proyecto "requirements.txt"
+$marcador = Join-Path $proyecto ".venv\.tablero-listo.json"
+if (Test-Path -LiteralPath $venvPython) {
+    & $venvPython $estado comprobar $requisitos $marcador
+    if ($LASTEXITCODE -eq 0) { exit 0 }
+}
+Log "===== Preparando entorno de Tablero de Oleaje ====="
+$validarPython = "import sys, struct; sys.exit(0 if sys.version_info >= (3,11) and struct.calcsize('P') == 8 else 1)"
+if (-not (Test-Path -LiteralPath $venvPython)) {
+    $pyCmd = $null
+    $pyArgs = @()
+    if (Get-Command py -ErrorAction SilentlyContinue) {
+        & py -3 -c $validarPython 2>$null
+        if ($LASTEXITCODE -eq 0) { $pyCmd = "py"; $pyArgs = @("-3") }
     }
-} else {
-    Log "Entorno virtual ya existe (.venv)."
+    if (-not $pyCmd -and (Get-Command python -ErrorAction SilentlyContinue)) {
+        & python -c $validarPython 2>$null
+        if ($LASTEXITCODE -eq 0) { $pyCmd = "python" }
+    }
+    if (-not $pyCmd) { Fallar "Instala Python 3.11 o superior de 64 bits desde python.org y agrega Python al PATH." }
+    Log "Creando .venv con $pyCmd $($pyArgs -join ' ')"
+    & $pyCmd @pyArgs -m venv (Join-Path $proyecto ".venv")
+    if ($LASTEXITCODE -ne 0) { Fallar "No se pudo crear .venv. Mueve la aplicacion a una carpeta escribible." }
 }
-
-# --- Instalar dependencias ---
-Log "Actualizando pip..."
-& $venvPython -m pip install --upgrade pip -q 2>&1 | ForEach-Object { Add-Content -Path $logFile -Value $_ -Encoding UTF8 }
-
-Log "Instalando dependencias (requirements.txt). Puede tardar la primera vez..."
-& $venvPython -m pip install -r requirements.txt 2>&1 | ForEach-Object { Add-Content -Path $logFile -Value $_ -Encoding UTF8 }
-if ($LASTEXITCODE -ne 0) {
-    Log "Fallo la instalacion de dependencias."
-    Log "Consulta 'GUIAS DE USO\GUIA INSTALACION WINDOWS.txt' (seccion Problemas)."
-    Fallar "pip install -r requirements.txt termino con error."
+& $venvPython -c $validarPython
+if ($LASTEXITCODE -ne 0) { Fallar "El .venv existente no funciona o usa Python incompatible. Renombra .venv y vuelve a abrir la aplicacion." }
+Log "Instalando/verificando requirements.txt. La primera vez requiere internet."
+$restricciones = Join-Path $proyecto "requirements-windows-py313.lock"
+$argsPip = @("-m", "pip", "install", "--disable-pip-version-check", "-r", $requisitos)
+$versionPython = & $venvPython -c "import sys; print(str(sys.version_info.major) + '.' + str(sys.version_info.minor))"
+if ($versionPython -eq "3.13" -and (Test-Path -LiteralPath $restricciones)) {
+    $argsPip += @("-c", $restricciones)
+    Log "Usando versiones verificadas para Windows / Python 3.13."
 }
-
+# Windows PowerShell 5 convierte stderr nativo en registros de error; se evalua el codigo real de pip.
+$ErrorActionPreference = "Continue"
+& $venvPython @argsPip 2>&1 | ForEach-Object { Add-Content -LiteralPath $logFile -Value $_ -Encoding UTF8 }
+$codigoPip = $LASTEXITCODE
+$ErrorActionPreference = "Stop"
+if ($codigoPip -ne 0) { Fallar "Fallo pip. Revisa salidas\install.log; el proximo inicio reintentara la instalacion." }
+& $venvPython $estado registrar $requisitos $marcador
+if ($LASTEXITCODE -ne 0) { Fallar "Las dependencias se instalaron pero no se pudieron cargar. Revisa el mensaje anterior." }
 Log "Entorno listo."
 exit 0

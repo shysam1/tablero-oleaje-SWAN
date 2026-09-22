@@ -15,7 +15,10 @@ _COLOR = {"sea": "#d18616", "swell": "#1f6feb", "": "#999999"}
 
 def calcular_serie(ds_efth):
     """Particiona la serie y devuelve el Dataset(time, familia) + nº de familias."""
-    series = particion_espectral.particionar_serie(ds_efth)
+    viento = None
+    if {"u10", "v10"} <= set(ds_efth.data_vars):
+        viento = {v: ds_efth[v].values for v in ("u10", "v10")}
+    series = particion_espectral.particionar_serie(ds_efth, viento_serie=viento)
     n = int(np.isfinite(series["Hs"]).any("time").sum())
     return {"series": series, "n_familias": n}
 
@@ -26,17 +29,18 @@ def dibujar_serie(ax, r):
     t = series["time"].values
     hs = series["Hs"].values                          # (time, familia)
     total = np.sqrt(np.nansum(hs ** 2, axis=1))       # Hs total = raíz suma de m0
-    ax.plot(t, total, color="#444", lw=1.4, label="Hs total")
+    total[~np.isfinite(hs).any(axis=1)] = np.nan
+    ax.plot(t, total, color="#444", lw=1.4, label="Hs de familias representadas")
     for k in range(series.sizes["familia"]):
         if not np.isfinite(hs[:, k]).any():
             continue
         tipos = series["tipo"].values[:, k]
         tipo = next((x for x in tipos if x), "")
         ax.plot(t, hs[:, k], color=_COLOR.get(tipo, "#999999"), lw=1.0,
-                label=f"Familia {k} ({tipo or 's/d'})")
+                label=f"Orden {k + 1} de energía")
     ax.set_xlabel("Tiempo")
     ax.set_ylabel("Hs [m]")
-    ax.set_title("Partición sea/swell — Hs por familia")
+    ax.set_title("Partición — familias ordenadas en cada instante")
     ax.legend(fontsize=8, ncol=2)
     ax.grid(True, alpha=0.3)
 
@@ -67,7 +71,7 @@ def dibujar_polar(ax, espectro, meta=None):
         esp = espectro
     freqs = esp["freq"].values
     dirs = esp["dir"].values
-    densidad = np.nan_to_num(esp["Efth"].values)
+    densidad = np.nan_to_num(esp["Efth"].transpose("freq", "dir").values, nan=0.0)
 
     theta = np.deg2rad(dirs)
     malla_t, malla_r = np.meshgrid(theta, freqs)
@@ -81,4 +85,10 @@ def dibujar_polar(ax, espectro, meta=None):
                 color=_COLOR.get(fam["tipo"], "#999999"),
                 label=f"{fam['tipo']}: Hs={fam['Hs']:.1f} m, Tp={fam['Tp']:.0f} s")
     ax.set_title("Espectro particionado S(f,θ)", fontsize=9, pad=8)
+    if esp["dir"].attrs.get("convencion", "nautica") == "nautica":
+        ax.set_theta_zero_location("N")
+        ax.set_theta_direction(-1)
+    else:
+        ax.set_theta_zero_location("E")
+        ax.set_theta_direction(1)
     ax.legend(fontsize=7, loc="upper right", bbox_to_anchor=(1.35, 1.1))

@@ -17,6 +17,8 @@ import shutil
 import subprocess
 import sys
 import threading
+import os
+import signal
 
 import prioridad
 import seguridad
@@ -46,11 +48,17 @@ def matar_proceso_arbol(proc):
                 ["taskkill", "/F", "/T", "/PID", str(proc.pid)],
                 capture_output=True, check=False)
         else:
-            proc.terminate()
+            if os.getpgid(proc.pid) == proc.pid:
+                os.killpg(proc.pid, signal.SIGTERM)
+            else:
+                proc.terminate()
             try:
                 proc.wait(timeout=8)
             except subprocess.TimeoutExpired:
-                proc.kill()
+                if os.getpgid(proc.pid) == proc.pid:
+                    os.killpg(proc.pid, signal.SIGKILL)
+                else:
+                    proc.kill()
     except Exception:
         try:
             proc.kill()
@@ -162,7 +170,8 @@ def correr_caso(carpeta, caso, log=None, on_proc=None):
         comando = [ejecutable, caso]
     proc = subprocess.Popen(comando, cwd=str(carpeta), shell=False,
                             stdout=subprocess.PIPE, stderr=subprocess.STDOUT,
-                            text=True, bufsize=1, creationflags=flags)
+                            text=True, errors="replace", bufsize=1, creationflags=flags,
+                            start_new_session=sys.platform != "win32")
     if on_proc:
         on_proc(proc)
     launcher_pid = getattr(proc, "pid", None)
@@ -183,7 +192,7 @@ def correr_caso(carpeta, caso, log=None, on_proc=None):
     # caso marca terminación con errores aunque norm_end exista. Ambos cuentan para
     # el veredicto, no sólo para el log.
     erf = list(carpeta.glob(f"{caso}.erf"))
-    ok = norm_end.exists() and not erf
+    ok = rc == 0 and norm_end.exists() and not erf
     if log:
         if ok:
             log(f"--- {caso}: terminó normalmente ---")
@@ -222,9 +231,14 @@ def correr_swan(carpeta, log=None, progreso=None, on_proc=None, cancelado=None):
         raise RuntimeError(
             "Nombres de caso SWAN no válidos (sin espacios ni caracteres raros): "
             f"{', '.join(invalidos)}")
+    from io_swan import _mapa_salidas
+    _mapa_salidas([carpeta / f"{caso}.swn" for caso in casos])
 
-    antes = {p.name for p in carpeta.glob("*.txt")} | \
-            {p.name for p in carpeta.glob("*.mat")}
+    def inventario():
+        return {p.name: (p.stat().st_size, p.stat().st_mtime_ns)
+                for patron in ("*.txt", "*.mat") for p in carpeta.glob(patron)}
+
+    antes = inventario()
 
     ok_global = True
     cancelado_por_usuario = False
@@ -243,13 +257,20 @@ def correr_swan(carpeta, log=None, progreso=None, on_proc=None, cancelado=None):
             raise RuntimeError(
                 f"Al caso '{caso}' le faltan archivos de entrada: "
                 f"{', '.join(faltan)}")
-        ok_global &= correr_caso(carpeta, caso, log=log, on_proc=on_proc)
+        ok_global = correr_caso(carpeta, caso, log=log, on_proc=on_proc)
+        if cancelado and cancelado():
+            cancelado_por_usuario = True
+            break
+        if not ok_global:
+            if log:
+                log("Corrida detenida: no se ejecutarán nidos con resultados incompletos del padre.")
+            break
     if progreso:
         progreso(len(casos), len(casos))
 
-    despues = {p.name for p in carpeta.glob("*.txt")} | \
-              {p.name for p in carpeta.glob("*.mat")}
-    nuevas = sorted(despues - antes)
+    despues = inventario()
+    nuevas = sorted(nombre for nombre, estado in despues.items()
+                    if antes.get(nombre) != estado)
     if log:
         log(f"\nSalidas generadas: {len(nuevas)} archivo(s).")
     if cancelado_por_usuario:

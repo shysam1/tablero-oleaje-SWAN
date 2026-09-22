@@ -31,6 +31,17 @@ if not defined ISCC (
 )
 
 echo Compilando instalador con Inno Setup...
+where py >nul 2>&1
+if errorlevel 1 (
+  python scripts\empaquetar.py --inno installer\windows\archivos_entrega.iss
+) else (
+  py -3 scripts\empaquetar.py --inno installer\windows\archivos_entrega.iss
+)
+if errorlevel 1 (
+  echo No se pudo validar el contenido de la entrega.
+  pause
+  exit /b 1
+)
 "%ISCC%" "installer\windows\TableroOleaje.iss"
 if errorlevel 1 (
   echo.

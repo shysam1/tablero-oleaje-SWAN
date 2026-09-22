@@ -12,6 +12,7 @@ document.addEventListener("DOMContentLoaded", () => {
 
 document.querySelectorAll(".nav-item").forEach((n) => {
   n.onclick = () => {
+    if (Tablero.state.busy) return;
     if (n.dataset.nav === "inicio") Tablero.views.renderInicio();
     if (n.dataset.nav === "avanzado") Tablero.views.renderAvanzado();
     if (n.dataset.nav === "credenciales") Tablero.views.renderCredenciales();
@@ -24,13 +25,14 @@ window.addEventListener("resize", () => Tablero.onResize());
 Tablero.onResize();
 
 document.addEventListener("keydown", (ev) => {
+  if (document.querySelector("dialog[open]")) return;
   if (ev.target.matches("input, textarea, select")) return;
   const T = Tablero;
   if (ev.key === "Enter" && T.state.vista === "wizard" && !T.state.busy) {
     ev.preventDefault();
     T.wizard.next();
   }
-  if (ev.key === "Escape" && T.state.vista === "wizard" && T.state.step > 0) {
+  if (ev.key === "Escape" && T.state.vista === "wizard" && T.state.step > 0 && !T.state.busy) {
     ev.preventDefault();
     T.wizard.collectStep();
     T.state.step--;

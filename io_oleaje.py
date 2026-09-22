@@ -10,6 +10,7 @@ Este es el cimiento del pipeline: todo lo demás opera sobre el Dataset que entr
 
 from pathlib import Path
 import sys
+import threading
 
 import numpy as np
 import pandas as pd
@@ -30,6 +31,15 @@ COLUMNAS_MAT = ["anio", "mes", "dia", "hora", "Hs", "Tp", "Dir"]
 
 # Columnas que definen el instante de cada registro.
 COLUMNAS_TIEMPO = ["anio", "mes", "dia", "hora"]
+
+# netcdf-c no garantiza seguridad entre hilos, aunque trabajen con archivos distintos.
+NETCDF_LOCK = threading.RLock()
+
+
+def leer_netcdf(ruta):
+    """Carga y cierra el archivo bajo el bloqueo compartido con ERA5."""
+    with NETCDF_LOCK, xr.open_dataset(ruta) as ds:
+        return ds.load()
 
 
 def _leer_mat(ruta, variable="DataTarea", columnas=COLUMNAS_MAT):
@@ -62,9 +72,40 @@ def _leer_csv(ruta, mapeo=None):
 
 def _columna_tiempo(df):
     """Construye la coordenada temporal a partir de anio/mes/dia/hora."""
-    partes = df[COLUMNAS_TIEMPO].astype(int).rename(
+    faltan = [c for c in COLUMNAS_TIEMPO if c not in df.columns]
+    if faltan:
+        raise ValueError(f"Faltan columnas temporales: {', '.join(faltan)}.")
+    valores = df[COLUMNAS_TIEMPO].apply(pd.to_numeric, errors="coerce")
+    if (not np.isfinite(valores.to_numpy()).all()
+            or not (valores == np.floor(valores)).all().all()
+            or not valores["hora"].between(0, 23).all()):
+        raise ValueError("Año/mes/día/hora deben ser enteros válidos; hora entre 0 y 23.")
+    partes = valores.astype(int).rename(
         columns={"anio": "year", "mes": "month", "dia": "day", "hora": "hour"})
-    return pd.to_datetime(partes)
+    try:
+        return pd.to_datetime(partes)
+    except (ValueError, OverflowError) as exc:
+        raise ValueError("La serie contiene fechas inválidas; revisa año/mes/día/hora.") from exc
+
+
+def validar_estructura(ds):
+    """Comprueba el contrato de serie puntual sin modificar valores medidos."""
+    if "time" not in ds.coords or ds["time"].dims != ("time",):
+        raise ValueError("Se requiere una coordenada temporal 'time' unidimensional.")
+    if not ds.sizes.get("time", 0):
+        raise ValueError("La serie no contiene registros temporales.")
+    t = ds["time"].values
+    if not np.issubdtype(t.dtype, np.datetime64) or np.isnat(t).any():
+        raise ValueError("La coordenada 'time' debe contener fechas válidas, no índices numéricos.")
+    presentes = [v for v in ATRIBUTOS_VARIABLES if v in ds.data_vars]
+    if not presentes:
+        raise ValueError("La serie no contiene variables reconocidas: Hs, Tp o Dir.")
+    for v in presentes:
+        if ds[v].dims != ("time",):
+            raise ValueError(f"{v} debe ser una serie puntual con dimensión (time,).")
+        if not np.issubdtype(ds[v].dtype, np.number):
+            raise ValueError(f"{v} debe contener valores numéricos.")
+    return ds.sortby("time") if np.any(t[1:] < t[:-1]) else ds
 
 
 def construir_dataset(df, atributos_globales=None):
@@ -94,7 +135,7 @@ def construir_dataset(df, atributos_globales=None):
     t = ds["time"].values
     if t.size > 1 and not np.all(t[1:] >= t[:-1]):
         ds = ds.sortby("time")
-    return ds
+    return validar_estructura(ds)
 
 
 def cargar(ruta, variable_mat="DataTarea", mapeo_csv=None):
@@ -111,7 +152,7 @@ def cargar(ruta, variable_mat="DataTarea", mapeo_csv=None):
     extension = ruta.suffix.lower()
 
     if extension == ".nc":
-        return xr.open_dataset(ruta)
+        return validar_estructura(leer_netcdf(ruta))
     if extension == ".mat":
         df = _leer_mat(ruta, variable=variable_mat)
     elif extension == ".csv":
@@ -129,7 +170,8 @@ def cargar(ruta, variable_mat="DataTarea", mapeo_csv=None):
 def guardar_netcdf(ds, ruta):
     """Guarda el Dataset en NetCDF y devuelve la ruta."""
     ruta = Path(ruta)
-    ds.to_netcdf(ruta)
+    with NETCDF_LOCK:
+        ds.to_netcdf(ruta)
     return ruta
 
 

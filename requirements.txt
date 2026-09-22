@@ -1,9 +1,9 @@
 # Tablero de Oleaje — dependencias Python
 # Instalar: pip install -r requirements.txt
 #
-# Versiones probadas en Windows y macOS (Intel + Apple Silicon M1/M2/M3).
-# En Mac ARM, pip instala wheels precompilados; no hace falta compilar a mano
-# salvo netCDF4 (ver GUIAS DE USO\…).
+# Python 3.11 o superior de 64 bits. La auditoria 2026-09-22 verifico
+# una instalacion limpia en Windows x64 / Python 3.13; sus versiones exactas
+# estan en requirements-windows-py313.lock. macOS requiere prueba nativa.
 
 numpy>=1.26,<3
 pandas>=2.0,<3

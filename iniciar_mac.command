@@ -24,8 +24,8 @@ if [ ! -f "$LAUNCH" ]; then
   exit 1
 fi
 
-bash "$LAUNCH"
-EXIT_CODE=$?
+EXIT_CODE=0
+bash "$LAUNCH" || EXIT_CODE=$?
 if [ "$EXIT_CODE" -ne 0 ]; then
   read -r -p "Presiona Enter para cerrar..." _
 fi

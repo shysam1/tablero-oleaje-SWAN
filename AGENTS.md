@@ -35,25 +35,28 @@ GUI vive en `motor_web.py` / `api_web.py`, y los pipelines en `io_*.py`,
 Comando recomendado:
 
 ```
-pytest test_regresion.py test_nesting.py test_motor_web.py test_asistente.py -q \
-  --basetemp="$HOME/pytest-tmp" \
-  --deselect test_regresion.py::test_descargar_serie_paralelo_max_dos \
-  --deselect test_regresion.py::test_descargar_serie_largo_concatena_tramos
+python -m pytest -q --capture=sys --basetemp="$HOME/pytest-tmp"
 ```
 
 - **`--basetemp` bajo `$HOME` es obligatorio.** `seguridad.confina_usuario` solo permite
   rutas bajo el home del usuario o `salidas/`. El `tmp_path` por defecto de pytest cae en
   `/tmp` (fuera del home), y unas ~4 pruebas que validan rutas de archivo fallan en falso.
-- **Dos tests de descarga ERA5 en paralelo provocan segfault en esta VM**
-  (`test_descargar_serie_paralelo_max_dos`, `test_descargar_serie_largo_concatena_tramos`):
-  escriben NetCDF concurrentemente desde un `ThreadPoolExecutor`, y el wheel pip de
-  `netCDF4` trae un HDF5 **no thread-safe**, así que la librería C revienta el proceso
-  entero. Es una limitación del entorno, no un bug del código (pasan en los builds
-  Windows/macOS de los mantenedores). Deselecciónalos.
+- **NetCDF no garantiza seguridad entre hilos.** La auditoría 2026-09-22 añadió
+  un bloqueo compartido de lectura/escritura en el flujo ERA5. Los dos mocks de
+  descarga paralela preparan NetCDF antes de iniciar los hilos y luego copian bytes.
+  No deseleccionarlos por defecto: una regresión requiere diagnóstico.
 - **8 tests se saltan** salvo que exportes `TABLERO_DATOS_SWAN` / `TABLERO_DATOS_OLEAJE`
   apuntando a datasets SWAN/oleaje reales (no incluidos en el repo).
 
-Con esos ajustes la suite queda en verde (≈137 passed, 8 skipped, 2 deselected).
+Los tests `test_ui_auditoria.py` requieren Playwright y Chromium (se omiten si
+faltan). `TABLERO_PROBAR_SWAN=1` activa dos corridas sintéticas con SWAN real en
+carpetas temporales. El informe `docs/AUDITORIA_2026-09-22.md` registra resultados
+actuales y distingue regresión, datos reales y prueba en otro equipo.
+
+En Windows, la captura predeterminada `fd` de pytest produjo errores intermitentes
+al cargar Tcl en las pruebas tkinter antiguas. `--capture=sys` evitó el problema
+en pruebas repetidas sin omitir casos ni modificar Python/Tcl. No atribuirlo a la
+UI web, que se prueba aparte en WebView2.
 
 ### Tests con datos reales (equipo local)
 

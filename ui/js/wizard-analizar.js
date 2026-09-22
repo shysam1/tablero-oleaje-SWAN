@@ -144,7 +144,7 @@ window.Tablero = window.Tablero || {};
           const r = await T.py("elegir_archivo", "serie");
           if (r) { document.getElementById("ruta-ref").value = r; T.state.ctx.ruta_referencia = r; }
         };
-        for (const fid of ["era5-lat", "era5-lon", "era5-ini", "era5-fin"]) {
+        for (const fid of ["era5-lat", "era5-lon", "era5-ini", "era5-fin", "era5-viento", "era5-espectro"]) {
           document.getElementById(fid)?.addEventListener("input", () => {
             T.state.ctx.era5_descargado = false;
             T.state.tableroGenerado = false;
@@ -162,12 +162,12 @@ window.Tablero = window.Tablero || {};
           const idleMs = Math.min(3600000, Math.max(1800000, dias * 90000));
           const done = await T.waitTask("era5", idleMs, {
             renewOnActivity: true,
-            timeoutMessage: "Tiempo de espera agotado en la interfaz. Si el log sigue avanzando, la descarga continúa; pulsa Descargar otra vez para reanudar.",
+            timeoutMessage: "El servidor está tardando más de lo esperado.",
           });
           if (done.ok) {
             T.state.ctx.ruta_datos = done.result.ruta;
             T.state.ctx.era5_descargado = true;
-            T.state.ctx.era5_clave = `${e.lat}|${e.lon}|${e.inicio}|${e.fin}|${e.espectro}`;
+            T.state.ctx.era5_clave = `${e.lat}|${e.lon}|${e.inicio}|${e.fin}|${e.viento}|${e.espectro}`;
             T.appendLog(done.result.log || "");
             document.getElementById("era5-hint").textContent = "Descarga lista: " + done.result.ruta;
             document.getElementById("era5-hint").classList.add("ok");
@@ -220,7 +220,7 @@ window.Tablero = window.Tablero || {};
           if (!T.state.ctx.era5_descargado) { T.notify("Descarga la serie ERA5 primero."); return false; }
           collectEra5Fields();
           const e = T.state.ctx.era5 || {};
-          const clave = `${e.lat}|${e.lon}|${e.inicio}|${e.fin}|${e.espectro}`;
+          const clave = `${e.lat}|${e.lon}|${e.inicio}|${e.fin}|${e.viento}|${e.espectro}`;
           if (T.state.ctx.era5_clave && T.state.ctx.era5_clave !== clave) {
             T.notify("Cambiaste coordenadas, fechas u opciones; vuelve a descargar ERA5.");
             return false;

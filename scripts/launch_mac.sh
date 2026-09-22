@@ -12,7 +12,7 @@ SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]:-$0}")" && pwd)"
 
 # Cargar la logica de preparacion (define APP_ROOT, VENV_PYTHON, BOOTSTRAP_OK)
 # shellcheck disable=SC1091
-source "$SCRIPT_DIR/bootstrap_mac.sh"
+source "$SCRIPT_DIR/bootstrap_mac.sh" || BOOTSTRAP_OK=""
 
 if [ -z "${BOOTSTRAP_OK:-}" ] || [ -z "${VENV_PYTHON:-}" ] || [ ! -x "${VENV_PYTHON}" ]; then
   echo ""

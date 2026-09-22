@@ -31,7 +31,8 @@ _RUTA = _ruta_config()
 def cargar():
     """Devuelve el dict de configuración (vacío si no hay o está dañado)."""
     try:
-        return json.loads(_RUTA.read_text(encoding="utf-8"))
+        datos = json.loads(_RUTA.read_text(encoding="utf-8"))
+        return datos if isinstance(datos, dict) else {}
     except Exception:
         return {}
 

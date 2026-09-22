@@ -43,9 +43,8 @@ Name: "spanish"; MessagesFile: "compiler:Languages\Spanish.isl"
 Name: "desktopicon"; Description: "Crear un acceso directo en el Escritorio"; GroupDescription: "Accesos directos:"
 
 [Files]
-; Copia todo el proyecto excepto entorno, salidas, tests, docs de desarrollo, etc.
-Source: "{#SourceRoot}\*"; DestDir: "{app}"; Flags: recursesubdirs createallsubdirs ignoreversion; \
-  Excludes: "\.venv\*,\.venv,\.git\*,\.git,\.gitignore,\.cursor\*,\.cursor,\dist\*,\dist,\salidas\*,\salidas,\__pycache__\*,*\__pycache__\*,*.pyc,\.pytest_cache\*,\.pytest_cache,test_*.py,conftest.py,\docs\*,\docs,*.log,*.lnk,config.json,*.nc,*.mat,*.md,*.vbs,preview_mac.html,empaquetar_entrega.*,empaquetar_instalador.bat,\installer\*,\installer"
+; Lista explicita generada por empaquetar_instalador.bat; nunca copiar todo el repo.
+#include "archivos_entrega.iss"
 
 [Icons]
 Name: "{group}\Tablero de Oleaje"; Filename: "{app}\scripts\launch_windows.bat"; WorkingDir: "{app}"; IconFilename: "{sys}\imageres.dll"; IconIndex: 109; Comment: "Tablero de Oleaje (UI web)"
@@ -72,7 +71,7 @@ begin
 
   { Intento 1: el launcher oficial  py -3 }
   if Exec('cmd.exe',
-          '/C py -3 -c "import sys; sys.exit(0 if sys.version_info >= (3,11) else 1)"',
+          '/C py -3 -c "import sys,struct; sys.exit(0 if sys.version_info >= (3,11) and struct.calcsize(''P'') == 8 else 1)"',
           '', SW_HIDE, ewWaitUntilTerminated, ResultCode) then
   begin
     if ResultCode = 0 then
@@ -83,7 +82,7 @@ begin
   if not Encontrado then
   begin
     if Exec('cmd.exe',
-            '/C python -c "import sys; sys.exit(0 if sys.version_info >= (3,11) else 1)"',
+            '/C python -c "import sys,struct; sys.exit(0 if sys.version_info >= (3,11) and struct.calcsize(''P'') == 8 else 1)"',
             '', SW_HIDE, ewWaitUntilTerminated, ResultCode) then
     begin
       if ResultCode = 0 then
@@ -100,7 +99,7 @@ begin
   if not PythonOk() then
   begin
     if MsgBox(
-      'Tablero de Oleaje necesita Python 3.11 o superior instalado y agregado al PATH.' + #13#10 + #13#10 +
+      'Tablero de Oleaje necesita Python 3.11 o superior de 64 bits instalado y agregado al PATH.' + #13#10 + #13#10 +
       'No se detecto una version compatible.' + #13#10 + #13#10 +
       'Descarga Python desde https://www.python.org/downloads/ (marca "Add python.exe to PATH" durante la instalacion) y vuelve a ejecutar este instalador.' + #13#10 + #13#10 +
       'Tambien recuerda: la primera vez que abras la aplicacion necesitaras conexion a internet para descargar las librerias.' + #13#10 + #13#10 +

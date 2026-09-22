@@ -25,6 +25,9 @@ def _pesos(freqs, dirs):
     (ddir, escalar en radianes). Sirven para integrar el espectro por rectángulos.
     """
     freqs = np.asarray(freqs, float)
+    if (freqs.ndim != 1 or freqs.size < 2 or not np.isfinite(freqs).all()
+            or np.any(freqs <= 0) or np.any(np.diff(freqs) <= 0)):
+        raise ValueError("Se requieren al menos 2 frecuencias positivas, finitas y crecientes.")
     dfreq = np.gradient(freqs)
     dirs_arr = np.sort(np.asarray(dirs, float))
     if dirs_arr.size < 2:
@@ -65,7 +68,8 @@ def _parametros(efth, mascara, freqs, dirs, dfreq, ddir, viento):
     m0 = _m0(e, dfreq, ddir)
     hs = 4.0 * np.sqrt(m0)
 
-    energia_por_freq = (e * dfreq[:, None]).sum(axis=1) * ddir
+    # Tp corresponde al máximo de S(f), no al de la energía de bandas de ancho desigual.
+    energia_por_freq = e.sum(axis=1) * ddir
     fp = float(freqs[int(np.argmax(energia_por_freq))])
     tp = 1.0 / fp if fp > 0 else np.nan
 
@@ -92,7 +96,16 @@ def particionar(efth, freqs, dirs, viento=None, umbral_rel=0.01):
     'umbral_rel' es la fracción del máximo bajo la cual una celda se descarta
     (0.0 = usar toda la energía; conserva m0 exactamente).
     """
-    efth = np.nan_to_num(np.asarray(efth, float), nan=0.0)
+    efth = np.asarray(efth, float)
+    if efth.shape != (len(freqs), len(dirs)):
+        raise ValueError("Efth debe tener forma (frecuencia, dirección).")
+    if not len(dirs) or not np.isfinite(dirs).all():
+        raise ValueError("Se requieren direcciones finitas y no vacías.")
+    if np.isinf(efth).any() or np.any(efth < 0):
+        raise ValueError("La densidad espectral debe ser no negativa y no infinita.")
+    if not np.isfinite(umbral_rel) or not 0 <= umbral_rel < 1:
+        raise ValueError("El umbral relativo debe estar entre 0 (incluido) y 1.")
+    efth = np.nan_to_num(efth, nan=0.0)
     dfreq, ddir = _pesos(freqs, dirs)
     if efth.max() <= 0.0:
         return []
@@ -142,7 +155,7 @@ def particionar_serie(ds_efth, viento_serie=None, umbral_rel=0.01, max_familias=
         viento = None
         if viento_serie is not None:
             viento = (float(viento_serie["u10"][t]), float(viento_serie["v10"][t]))
-        fams = particionar(ds_efth["Efth"].isel(time=t).values,
+        fams = particionar(ds_efth["Efth"].isel(time=t).transpose("freq", "dir").values,
                            freqs, dirs, viento=viento, umbral_rel=umbral_rel)
         resultados.append(fams)
 

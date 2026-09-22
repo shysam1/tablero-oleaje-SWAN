@@ -1,5 +1,15 @@
 # Handoff — Herramienta "Tablero Oleaje" (contexto para nueva conversación)
 
+## Estado de la auditoría (2026-09-22)
+
+Copia local auditada con correcciones; release pública v1.0.1 anterior.
+Ver `docs/AUDITORIA_2026-09-22.md` para pruebas, entrega ZIP y pendientes.
+Siguiente paso: distribución con Python incluido, otra cuenta/equipo Windows
+sin administrador y validación autenticada CDS. macOS sigue sin prueba nativa.
+La selección por diálogo habilita rutas en otra unidad durante la sesión.
+No anunciar lectura universal de SWAN: formatos externos IDLA/factores/HEADER
+requieren soporte y fixtures. Los datos originales se conservaron.
+
 > **Bitácora compartida entre agentes.** Esta app se desarrolla con dos asistentes
 > en paralelo (Cursor y Claude Code). Para que se entiendan, **todo cambio se
 > registra abajo con su PORQUÉ**, lo más reciente primero. Antes de tocar código,
@@ -12,6 +22,25 @@
 > - Claude Code: `CLAUDE.md`
 
 ## Registro de cambios (más reciente primero)
+
+### 2026-09-22 · Auditoría integral y preparación de entrega local (Codex)
+*Qué/por qué:* auditoría orientada a uso por terceros. Se corrigieron preparación
+incompleta del entorno, empaquetado por comodín, Escape que confirmaba borrados,
+carreras y bloqueo de tareas, rutas fuera del perfil elegidas por diálogo, caché,
+NaN/Gumbel/estadística angular, espectros ERA5/MARS, I/O NetCDF concurrente,
+sobrescritura de dominios SWAN, UTM/direcciones, no estacionario, límites de memoria
+y descarga batimétrica con espejo oficial NOAA. Lock Windows/Python 3.13, manifiesto
+de entrega y ejemplo sintético sin CDS. Instaladores históricos conservados.
+*Archivos:* informe principal `docs/AUDITORIA_2026-09-22.md` y tres subinformes;
+motor/API/UI/IO/SWAN, scripts e instaladores fuente, cinco módulos de tests nuevos,
+`tools/verificar_escritorio.py`, `ejemplos/`, README/guías/AGENTS.
+*Notas:* instalación real en venv limpio, `pip check`, reapertura sin índice pip y
+flujo nativo WebView2→PNG/preview correctos. Dos pares SWAN sintéticos ejecutados
+con binario real; datos Coronel/Talcahuano solo lectura. Captura pytest `fd` falla
+intermitentemente con Tcl antiguo; usar `--capture=sys` (diagnóstico documentado).
+Resultados finales y SHA-256 del ZIP constan en el informe. Descarga autenticada
+ERA5, otro Windows y macOS pendientes; no se usaron credenciales. Al terminar,
+el usuario autorizó commit y subida del código a GitHub, sin crear una nueva release.
 
 ### 2026-07-06 · Release v1.0.1 — instalador per-user publicado (Cursor)
 *Qué/por qué:* compilado `Tablero_Oleaje_Setup_1.0.1.exe` (Inno Setup 6.7.3),
@@ -695,7 +724,7 @@ local de `tablero-oleaje` (código separado de carpetas de tareas académicas).
 Patrón común de todo el código: **registro adaptativo** — cada producto declara
 `requiere=[...]`; el pipeline genera solo lo que los datos permiten y reporta lo que falta.
 
-## Estado: TODO funcionando y verificado
+## Descripción funcional histórica (consultar auditoría 2026-09-22 para límites actuales)
 
 ### A) Tablero de curvas (serie temporal en un punto)
 - `io_oleaje.py`: `.mat/.csv/.nc` → Dataset xarray (coord `time` real) → NetCDF.
@@ -819,12 +848,12 @@ Patrón común de todo el código: **registro adaptativo** — cada producto dec
   los diálogos). `README.md`: doc de uso/flujo/módulos.
 
 ## Entorno
-- Python 3.10+ recomendado (probado con 3.13). Usar `python` en PATH; en Windows,
+- Python 3.11+ de 64 bits; auditado en Windows/Python 3.13. Usar `python` en PATH; en Windows,
   **`pythonw.exe` puede fallar** con `app_web.py` + pywebview — preferir `python.exe`.
 - Instalados: `xarray` 2026.4.0, `netcdf4` 1.7.4, `scipy`, `matplotlib`, `windrose`,
   `cmocean`, `ffmpeg` (Gyan, vía winget), **`pywebview`** (UI principal), WebView2/Edge.
 
-## Estado actual y lo que sigue
+## Estado histórico anterior a la auditoría (no implica procesos actualmente activos)
 La herramienta está **completa y verificada** (A–E). Pendiente abierto al cerrar
 esta sesión:
 

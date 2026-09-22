@@ -10,11 +10,16 @@ import threading
 import time
 from pathlib import Path
 
+for _salida in (sys.stdout, sys.stderr):
+    if hasattr(_salida, "reconfigure"):
+        _salida.reconfigure(encoding="utf-8", errors="replace")
+
 _MODO_GUI = "--gui" in sys.argv
 if _MODO_GUI:
     sys.argv = [a for a in sys.argv if a != "--gui"]
-    _log_dir = Path(__file__).resolve().parent / "salidas"
-    _log_dir.mkdir(exist_ok=True)
+    from rutas import RAIZ_SALIDAS
+    _log_dir = RAIZ_SALIDAS
+    _log_dir.mkdir(parents=True, exist_ok=True)
     _log_fh = open(_log_dir / "app_web.log", "a", encoding="utf-8")
     sys.stdout = _log_fh
     sys.stderr = _log_fh

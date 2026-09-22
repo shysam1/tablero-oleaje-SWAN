@@ -30,7 +30,7 @@ def _float_finito(val):
 
 def _indice_peak(ds):
     """Índice temporal del mayor Hs de la serie."""
-    hs = ds["Hs"]
+    hs = ds["Hs"].where(np.isfinite(ds["Hs"]) & (ds["Hs"] >= 0))
     if hs.isnull().all():
         raise ValueError("No hay Hs válidos para localizar el pico.")
     return int(hs.fillna(-np.inf).argmax("time"))
@@ -55,6 +55,9 @@ def condicion_borde(ds, modo, periodo_retorno=100):
     n = int(ds.sizes.get("time", 0))
     if n == 0:
         raise ValueError("La serie no tiene pasos temporales.")
+    if "Hs" not in ds:
+        raise ValueError("La serie no contiene Hs.")
+    ds = ds.assign(Hs=ds["Hs"].where(np.isfinite(ds["Hs"]) & (ds["Hs"] >= 0)))
     if bool(ds["Hs"].isnull().all()):
         raise ValueError("La serie no tiene valores válidos de Hs.")
 
@@ -76,13 +79,12 @@ def condicion_borde(ds, modo, periodo_retorno=100):
             raise ValueError(
                 "Se necesitan al menos 2 años de registro y span ≥ 730 días para "
                 f"el ajuste de Gumbel (hay {n} año(s), span {dias} d).")
-        maximos = ds["Hs"].groupby("time.year").max().values
+        maximos, loc, scale = productos.ajustar_gumbel(ds)
         n = maximos.size
         if n < 2:
             raise ValueError(
                 "Se necesitan al menos 2 años de datos para el ajuste de Gumbel "
                 f"(la serie tiene {n}).")
-        loc, scale = stats.gumbel_r.fit(maximos)
         hs = float(stats.gumbel_r.ppf(1 - 1.0 / tr, loc, scale))
         if not math.isfinite(hs) or hs <= 0:
             raise ValueError(

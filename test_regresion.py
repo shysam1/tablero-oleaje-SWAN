@@ -718,20 +718,27 @@ def test_descargar_serie_largo_concatena_tramos(monkeypatch, tmp_path):
 
     llamadas = []
 
-    def _falso_retrieve(dataset, peticion, destino):
-        mes = int(peticion["month"][0])
-        llamadas.append(mes)
+    # La red devuelve bytes: el fixture NetCDF se construye antes de crear hilos.
+    respuestas = {}
+    for mes in range(1, 4):
         t = np.array([f"2024-{mes:02d}-15T00", f"2024-{mes:02d}-15T03"],
                      dtype="datetime64[ns]")
         lat = np.array([-36.75, -37.25])
         lon = np.array([-73.75, -73.25])
         forma = (len(t), len(lat), len(lon))
+        fixture = tmp_path / f"respuesta_{mes:02d}.nc"
         xr.Dataset(
             {"swh": (("time", "latitude", "longitude"), np.full(forma, 2.5)),
              "pp1d": (("time", "latitude", "longitude"), np.full(forma, 12.0)),
              "mwd": (("time", "latitude", "longitude"), np.full(forma, 225.0))},
             coords={"time": t, "latitude": lat, "longitude": lon},
-        ).to_netcdf(destino)
+        ).to_netcdf(fixture)
+        respuestas[mes] = fixture.read_bytes()
+
+    def _falso_retrieve(dataset, peticion, destino):
+        mes = int(peticion["month"][0])
+        llamadas.append(mes)
+        Path(destino).write_bytes(respuestas[mes])
 
     class _ClienteFalso:
         def retrieve(self, dataset, peticion, destino):
@@ -757,23 +764,30 @@ def test_descargar_serie_paralelo_max_dos(monkeypatch, tmp_path):
     activos = {"n": 0, "max": 0}
     lock = threading.Lock()
 
+    # NetCDF no se ejecuta dentro del cliente falso de red, que sí es concurrente.
+    respuestas = {}
+    for mes in range(1, 5):
+        t = np.array([f"2024-{mes:02d}-15T00", f"2024-{mes:02d}-15T03"],
+                     dtype="datetime64[ns]")
+        lat = np.array([-36.75, -37.25])
+        lon = np.array([-73.75, -73.25])
+        forma = (len(t), len(lat), len(lon))
+        fixture = tmp_path / f"respuesta_{mes:02d}.nc"
+        xr.Dataset(
+            {"swh": (("time", "latitude", "longitude"), np.full(forma, 2.5)),
+             "pp1d": (("time", "latitude", "longitude"), np.full(forma, 12.0)),
+             "mwd": (("time", "latitude", "longitude"), np.full(forma, 225.0))},
+            coords={"time": t, "latitude": lat, "longitude": lon},
+        ).to_netcdf(fixture)
+        respuestas[mes] = fixture.read_bytes()
+
     def _falso_retrieve(dataset, peticion, destino):
         mes = int(peticion["month"][0])
         with lock:
             activos["n"] += 1
             activos["max"] = max(activos["max"], activos["n"])
         time.sleep(0.08)
-        t = np.array([f"2024-{mes:02d}-15T00", f"2024-{mes:02d}-15T03"],
-                     dtype="datetime64[ns]")
-        lat = np.array([-36.75, -37.25])
-        lon = np.array([-73.75, -73.25])
-        forma = (len(t), len(lat), len(lon))
-        xr.Dataset(
-            {"swh": (("time", "latitude", "longitude"), np.full(forma, 2.5)),
-             "pp1d": (("time", "latitude", "longitude"), np.full(forma, 12.0)),
-             "mwd": (("time", "latitude", "longitude"), np.full(forma, 225.0))},
-            coords={"time": t, "latitude": lat, "longitude": lon},
-        ).to_netcdf(destino)
+        Path(destino).write_bytes(respuestas[mes])
         with lock:
             activos["n"] -= 1
 
@@ -1061,7 +1075,9 @@ def test_descargar_espectro_tramos_y_cache_limpia(tmp_path, monkeypatch):
     monkeypatch.setattr(io_era5, "_MAX_TRAMOS_PARALELO", 1)
 
     def _falso_retrieve(dataset, peticion, destino):
-        mes = int(peticion["month"][0])
+        assert dataset == "reanalysis-era5-complete"
+        assert peticion["param"] == "140251"
+        mes = int(peticion["date"][5:7])
         t = np.array([f"2024-{mes:02d}-15T00", f"2024-{mes:02d}-15T03"],
                      dtype="datetime64[ns]")
         freq = 0.03453 * 1.1 ** np.arange(30)

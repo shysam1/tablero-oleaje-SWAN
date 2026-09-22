@@ -31,7 +31,9 @@ UTM_LARGE_DEFAULT = (620494.0, 5876451.0)
 META_CASO = "tablero_swan.json"
 
 # Valor de relleno (excepción de SWAN) por variable. None = todo valor < 0.
-EXCEPCION = {"Hs": None, "Tp": -9.0, "Dir": -999.0, "Setup": -9.0}
+EXCEPCION = {"Hs": None, "Tp": -9.0, "Dir": -999.0, "Setup": -9.0,
+             "Tm01": -9.0, "Tm02": -9.0, "Tmean": -9.0,
+             "WaterLevel": -9.0, "Dp": -999.0, "Dtransport": -999.0}
 
 ATRIBUTOS = {
     "Hs": {"long_name": "Altura significativa", "units": "m"},
@@ -39,19 +41,55 @@ ATRIBUTOS = {
     "Dir": {"long_name": "Dirección media", "units": "deg"},
     "Setup": {"long_name": "Set-up por oleaje", "units": "m"},
     "depth": {"long_name": "Profundidad", "units": "m"},
+    "Tm01": {"long_name": "Periodo medio Tm01", "units": "s"},
+    "Tm02": {"long_name": "Periodo medio Tm02", "units": "s"},
+    "Tmean": {"long_name": "Periodo medio PER (definición SWAN)", "units": "s"},
+    "WaterLevel": {"long_name": "Nivel de agua", "units": "m"},
+    "Dp": {"long_name": "Dirección peak", "units": "deg"},
+    "Dtransport": {"long_name": "Dirección del transporte de energía", "units": "deg"},
 }
 
 # Cantidad SWAN (último argumento del comando BLOCK) → variable física. Es la
 # fuente robusta: el .swn declara qué archivo lleva qué cantidad, sin depender
 # del nombre del archivo.
 _QUANT_VAR = {"HS": "Hs", "HSIG": "Hs", "HSIGN": "Hs",
-              "TPS": "Tp", "RTP": "Tp", "PER": "Tp", "TM01": "Tp", "TM02": "Tp",
-              "DIR": "Dir", "PDIR": "Dir", "TDIR": "Dir",
-              "SETUP": "Setup", "WATLEV": "Setup"}
+              "TPS": "Tp", "RTP": "Tp", "PER": "Tmean", "TM01": "Tm01", "TM02": "Tm02",
+              "DIR": "Dir", "PDIR": "Dp", "TDIR": "Dtransport",
+              "SETUP": "Setup", "WATLEV": "WaterLevel"}
 
 # Patrón en el nombre del archivo → variable. Fallback si el .swn no declara el
 # BLOCK (orden: setup antes que tp, para que 'SetUp' no se confunda).
 _PATRON_VAR = (("setup", "Setup"), ("hs", "Hs"), ("tp", "Tp"), ("dir", "Dir"))
+
+
+def _lineas_swn(ruta):
+    """Lee comandos completos, sin comentarios, incluidos los continuados con &."""
+    try:
+        texto = Path(ruta).read_text(encoding="utf-8-sig")
+    except UnicodeDecodeError:
+        texto = Path(ruta).read_text(encoding="cp1252")
+    pendiente = ""
+    for linea in texto.splitlines():
+        linea = linea.split("$", 1)[0].strip()
+        if not linea:
+            continue
+        pendiente += " " + linea.rstrip("&").strip()
+        if not linea.endswith("&"):
+            yield pendiente.strip()
+            pendiente = ""
+    if pendiente:
+        yield pendiente.strip()
+
+
+def _convencion_direccion(swn):
+    for linea in _lineas_swn(swn):
+        partes = linea.upper().split()
+        if partes[0] == "SET":
+            if any(t.startswith("NAUT") for t in partes):
+                return "nautica"
+            if any(t.startswith("CART") for t in partes):
+                return "cartesiana"
+    return "cartesiana"
 
 
 def _mapa_salidas(swns):
@@ -61,8 +99,9 @@ def _mapa_salidas(swns):
     el token que coincide con una cantidad SWAN conocida.
     """
     mapa = {}
+    propietarios = {}
     for swn in swns:
-        for linea in Path(swn).read_text().splitlines():
+        for linea in _lineas_swn(swn):
             toks = linea.split()
             if not toks or toks[0].upper() != "BLOCK":
                 continue
@@ -72,6 +111,13 @@ def _mapa_salidas(swns):
             cantidad = next((t.upper() for t in toks if t.upper() in _QUANT_VAR),
                             None)
             if cantidad:
+                nombre = comillas[-1]
+                if nombre in propietarios and propietarios[nombre] != Path(swn):
+                    raise ValueError(
+                        f"Los casos {propietarios[nombre].name} y {Path(swn).name} "
+                        f"escriben ambos '{nombre}'. Usa salidas distintas por dominio "
+                        "y vuelve a ejecutar la corrida; los resultados pudieron sobrescribirse.")
+                propietarios[nombre] = Path(swn)
                 mapa[comillas[-1]] = _QUANT_VAR[cantidad]
     return mapa
 
@@ -81,16 +127,30 @@ def _leer_cgrid(ruta_swn):
     Extrae la geometría de malla del comando CGRID de un .swn, incluyendo el
     origen LOCAL (xpc, ypc) necesario para ubicar un dominio anidado.
     """
-    for linea in Path(ruta_swn).read_text().splitlines():
+    lineas = list(_lineas_swn(ruta_swn))
+    if any(re.match(r"COORD\w*\s+SPHE", l, re.I) for l in lineas):
+        raise ValueError("El visor SWAN admite mallas cartesianas; no mallas esféricas.")
+    for linea in lineas:
         partes = linea.split()
         if partes and partes[0].upper() == "CGRID":
+            if len(partes) > 1 and partes[1].upper().startswith("REG"):
+                partes.pop(1)
             # CGRID xpc ypc alpc xlenc ylenc mxc myc … → se necesitan 8 tokens.
             if len(partes) < 8:
                 raise ValueError(
                     f"CGRID incompleto en {Path(ruta_swn).name}: {linea.strip()!r}")
-            x0, y0 = float(partes[1]), float(partes[2])
+            try:
+                x0, y0, angulo = map(float, partes[1:4])
+            except ValueError as exc:
+                raise ValueError("El visor SWAN admite CGRID regular rectangular.") from exc
             xlenc, ylenc = float(partes[4]), float(partes[5])
             mxc, myc = int(partes[6]), int(partes[7])
+            if not np.isfinite([x0, y0, angulo, xlenc, ylenc]).all():
+                raise ValueError("CGRID contiene valores no finitos.")
+            if not np.isclose(angulo % 360, 0):
+                raise ValueError("El visor SWAN aún no admite mallas rotadas (alpc distinto de 0).")
+            if xlenc <= 0 or ylenc <= 0:
+                raise ValueError("CGRID necesita extensiones positivas.")
             # mxc/myc son el nº de celdas: con 0 la malla es degenerada y dx/dy
             # dividirían por cero.
             if mxc <= 0 or myc <= 0:
@@ -110,11 +170,31 @@ def _dominio_grande_swn(carpeta):
     if not swns:
         raise ValueError(f"No hay .swn en {carpeta}")
     geos = {s: _leer_cgrid(s) for s in swns}
-    padres = [s for s, g in geos.items()
-              if g["x0_local"] == 0 and g["y0_local"] == 0]
-    padre = (padres[0] if padres
-             else max(geos, key=lambda s: geos[s]["nx"] * geos[s]["ny"]))
+    padres = [s for s in geos if not any(
+        re.match(r"BOU\w*\s+NEST", linea, re.I) for linea in _lineas_swn(s))]
+    # La cantidad de nodos puede ser mayor en un nido fino: manda el área física.
+    padre = max(padres or list(geos), key=lambda s:
+                (geos[s]["nx"] - 1) * geos[s]["dx"] *
+                (geos[s]["ny"] - 1) * geos[s]["dy"])
     return padre, geos[padre]
+
+
+def _utm_dominio(geo, geo_padre, utm_large):
+    """Traslada todos los dominios por el mismo offset, también con CGRID absoluto."""
+    return (utm_large[0] + geo["x0_local"] - geo_padre["x0_local"],
+            utm_large[1] + geo["y0_local"] - geo_padre["y0_local"])
+
+
+def _bot_de_dominio(swn, bots, nx, ny):
+    """Prefiere el fondo declarado; evita elegir otro dominio del mismo tamaño."""
+    for linea in _lineas_swn(swn):
+        if re.match(r"READ\w*\s+BOT", linea, re.I):
+            archivos = re.findall(r"'([^']*)'", linea)
+            if archivos:
+                ruta = Path(swn).parent / archivos[0]
+                return ruta if ruta.is_file() and len(ruta.read_text().split()) == nx * ny else None
+    candidatos = [b for b in bots if len(Path(b).read_text().split()) == nx * ny]
+    return candidatos[0] if len(candidatos) == 1 else None
 
 
 def _parece_utm_absoluto(x, y):
@@ -226,8 +306,24 @@ def _leer_campo(ruta_txt, nx, ny, excepcion):
 
 
 def _meta_condicion(ruta_swn):
-    """Extrae Hs/Tp/Dp de la marejada desde el encabezado comentado del .swn."""
-    texto = Path(ruta_swn).read_text()
+    """Recupera los bordes constantes; usa comentarios sólo para archivos antiguos."""
+    bordes = []
+    for linea in _lineas_swn(ruta_swn):
+        if re.match(r"BOU\w*\s+SIDE", linea, re.I):
+            par = re.search(r"\bPAR\w*\s+(\S+)\s+(\S+)\s+(\S+)", linea, re.I)
+            if par:
+                try:
+                    bordes.append(tuple(float(v) for v in par.groups()))
+                except ValueError:
+                    continue
+    if bordes:
+        return {clave: bordes[0][i] for i, clave in
+                enumerate(("Hs_borde", "Tp_borde", "Dp_borde"))
+                if all(np.isclose(b[i], bordes[0][i]) for b in bordes)}
+    try:
+        texto = Path(ruta_swn).read_text(encoding="utf-8-sig")
+    except UnicodeDecodeError:
+        texto = Path(ruta_swn).read_text(encoding="cp1252")
     meta = {}
     for clave, patron in (("Hs_borde", r"Hs\s*=\s*([\d.]+)"),
                           ("Tp_borde", r"Tp\s*=\s*([\d.]+)"),
@@ -236,6 +332,28 @@ def _meta_condicion(ruta_swn):
         if encontrado:
             meta[clave] = float(encontrado.group(1))
     return meta
+
+
+def _validar_cabecera_espectro(lineas, nombre):
+    """Rechaza formatos que el visor de un punto no puede representar fielmente."""
+    conversion = 180.0 / np.pi
+    for i, linea in enumerate(lineas):
+        partes = linea.split()
+        clave = partes[0].upper() if partes else ""
+        if clave in ("LOCATIONS", "LONLAT", "QUANT"):
+            if i + 1 >= len(lineas):
+                raise ValueError(f"{nombre}: encabezado {clave} truncado.")
+            if int(lineas[i + 1].split()[0]) != 1:
+                raise ValueError(f"{nombre}: el visor admite un punto y una cantidad por espectro.")
+        if clave == "QUANT":
+            if i + 4 >= len(lineas):
+                raise ValueError(f"{nombre}: encabezado QUANT truncado.")
+            cantidad = lineas[i + 2].split()[0].lower()
+            unidad = lineas[i + 3].split()[0].lower()
+            if cantidad != "vadens" or unidad not in ("m2/hz/degr", "m2/hz/rad"):
+                raise ValueError(f"{nombre}: se requiere VaDens en m2/Hz/degr o m2/Hz/rad.")
+            conversion = 1.0 if unidad.endswith("/rad") else 180.0 / np.pi
+    return conversion
 
 
 def leer_espectro_swan(carpeta, archivo=None):
@@ -255,6 +373,7 @@ def leer_espectro_swan(carpeta, archivo=None):
     if ruta is None or not ruta.exists():
         return None
     lineas = ruta.read_text().splitlines()
+    conversion = _validar_cabecera_espectro(lineas, ruta.name)
 
     def _bloque(i, n):
         vals = []
@@ -267,6 +386,7 @@ def leer_espectro_swan(carpeta, archivo=None):
         return np.array(vals), i
 
     freqs = dirs = matriz = None
+    convencion = "cartesiana"
     factor, excepcion = 1.0, -99.0
     i, ntot = 0, len(lineas)
     while i < ntot:
@@ -277,6 +397,7 @@ def leer_espectro_swan(carpeta, archivo=None):
                 raise ValueError(f"{ruta.name}: encabezado {clave} incompleto.")
             freqs, i = _bloque(i + 2, int(lineas[i + 1].split()[0]))
         elif clave in ("CDIR", "NDIR"):
+            convencion = "nautica" if clave == "NDIR" else "cartesiana"
             if i + 1 >= ntot:
                 raise ValueError(f"{ruta.name}: encabezado {clave} incompleto.")
             dirs, i = _bloque(i + 2, int(lineas[i + 1].split()[0]))
@@ -310,13 +431,14 @@ def leer_espectro_swan(carpeta, archivo=None):
 
     if matriz is None:
         return None
-    densidad = matriz * factor * (180.0 / np.pi)
+    densidad = matriz * factor * conversion
     densidad[np.isclose(matriz, excepcion)] = np.nan
     ds = xr.Dataset({"Efth": (("freq", "dir"), densidad)},
                     coords={"freq": freqs, "dir": dirs})
     ds["Efth"].attrs = {"long_name": "Densidad de energía", "units": "m2/Hz/rad"}
     ds["freq"].attrs = {"long_name": "Frecuencia", "units": "Hz"}
-    ds["dir"].attrs = {"long_name": "Dirección (cartesiana)", "units": "deg"}
+    ds["dir"].attrs = {"long_name": f"Dirección ({convencion})", "units": "deg",
+                       "convencion": convencion}
     return ds
 
 
@@ -375,12 +497,15 @@ def _detectar_dominios(carpeta, utm_large, titulos):
 
     def cfg_de(geo, utm, swn, nombre, titulo):
         ny, nx = geo["ny"], geo["nx"]
+        declarados = _mapa_salidas([swn])
         campos = _asignar_campos([(var, ruta) for ruta, var, n in inv
-                                  if n == nx * ny])
-        bot = next((b for b in bots
-                    if len(Path(b).read_text().split()) == nx * ny), None)
+                                  if n == nx * ny and
+                                  (ruta.name in declarados if declarados else
+                                   ruta.name not in mapa_block)])
+        bot = _bot_de_dominio(swn, bots, nx, ny)
         return {"geo": geo, "utm": utm, "campos": campos, "bot": bot,
-                "swn": swn, "titulo": titulos.get(nombre, titulo)}
+                "swn": swn, "convencion_dir": _convencion_direccion(swn),
+                "titulo": titulos.get(nombre, titulo)}
 
     dominios = {"large": cfg_de(geos[padre], utm_large, padre, "large",
                                 "Dominio grande")}
@@ -388,7 +513,7 @@ def _detectar_dominios(carpeta, utm_large, titulos):
     for s, g in geos.items():
         if s == padre:
             continue
-        utm = (utm_large[0] + g["x0_local"], utm_large[1] + g["y0_local"])
+        utm = _utm_dominio(g, geos[padre], utm_large)
         nombre = f"n{i}"
         dominios[nombre] = cfg_de(g, utm, s, nombre, f"Dominio anidado {nombre}")
         i += 1
@@ -414,13 +539,15 @@ def _construir_dataset(cfg):
     ds = xr.Dataset(data_vars, coords={"x": x, "y": y})
     for v in ds.data_vars:
         ds[v].attrs.update(ATRIBUTOS.get(v, {}))
+    if "Dir" in ds:
+        ds["Dir"].attrs["convencion"] = cfg["convencion_dir"]
     ds["x"].attrs.update({"long_name": "Este UTM", "units": "m"})
     ds["y"].attrs.update({"long_name": "Norte UTM", "units": "m"})
     ds.attrs.update({"titulo": cfg["titulo"]})
     return ds
 
 
-def cargar_corrida(carpeta, utm_large=UTM_LARGE_DEFAULT, titulos=None):
+def cargar_corrida(carpeta, utm_large=None, titulos=None):
     """
     Carga una corrida SWAN completa desde su carpeta.
 
@@ -432,6 +559,11 @@ def cargar_corrida(carpeta, utm_large=UTM_LARGE_DEFAULT, titulos=None):
     (S(f,θ) si existe) y 'meta' (condición de borde Hs/Tp/Dp + nombre = carpeta).
     """
     carpeta = Path(carpeta)
+    if utm_large is None:
+        meta_utm = inferir_utm_desde_carpeta(carpeta)
+        utm_large = (meta_utm["utm_x"], meta_utm["utm_y"])
+        if meta_utm["origen"] == "default":
+            print(f"  [aviso] {meta_utm['mensaje']}")
     cfgs = _detectar_dominios(carpeta, utm_large, titulos or {})
 
     meta = _meta_condicion(cfgs["large"]["swn"])

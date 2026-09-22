@@ -3,6 +3,7 @@ API Python expuesta a la interfaz web vía pywebview.
 """
 
 import json
+import logging
 import queue
 import sys
 import threading
@@ -13,6 +14,7 @@ import webview
 import io_era5
 import motor_web
 import sistema
+import seguridad
 
 
 class Api:
@@ -56,9 +58,12 @@ class Api:
         if isinstance(val, dict):
             return val
         try:
-            return json.loads(val)
+            resultado = json.loads(val)
         except (json.JSONDecodeError, TypeError) as exc:
             raise ValueError(f"{etiqueta} JSON inválido.") from exc
+        if not isinstance(resultado, dict):
+            raise ValueError(f"{etiqueta} debe ser un objeto JSON.")
+        return resultado
 
     def _error_tarea(self, exc):
         """Mensaje seguro para la UI (sin rutas ni trazas internas)."""
@@ -75,15 +80,17 @@ class Api:
         def worker():
             try:
                 result = func()
-                self._emit("task_done", {"id": task_id, "ok": True, "result": result})
+                evento = {"id": task_id, "ok": True, "result": result}
             except Exception as exc:
-                self._emit("task_done", {
+                logging.exception("Error en la tarea %s", task_id)
+                evento = {
                     "id": task_id, "ok": False,
                     "error": self._error_tarea(exc),
-                })
+                }
             finally:
                 with self._lock:
                     self._busy = False
+                    self._emit("task_done", evento)
 
         self._emit("task_start", {"id": task_id})
         threading.Thread(target=worker, daemon=True).start()
@@ -106,6 +113,7 @@ class Api:
         tipos = mapa.get(tipo, mapa["oleaje"]) + ("Todos (*.*)",)
         r = win.create_file_dialog(webview.OPEN_DIALOG, file_types=tipos)
         if r:
+            seguridad.registrar_ruta_elegida(r[0])
             motor_web.guardar_config_carpeta("ultima_carpeta_datos", Path(r[0]).parent)
             return r[0]
         return None
@@ -118,6 +126,7 @@ class Api:
         inicial = motor_web.obtener_config_carpeta(clave)
         r = win.create_file_dialog(webview.FOLDER_DIALOG, directory=inicial or None)
         if r:
+            seguridad.registrar_ruta_elegida(r[0])
             motor_web.guardar_config_carpeta(clave, r[0])
             return r[0]
         return None
@@ -246,7 +255,10 @@ class Api:
 
     def eliminar_cache_era5(self, carpeta):
         try:
-            return motor_web.eliminar_cache_era5(carpeta)
+            with self._lock:
+                if self._busy:
+                    return {"ok": False, "error": "Espera a que termine la tarea antes de borrar la caché."}
+                return motor_web.eliminar_cache_era5(carpeta)
         except (ValueError, OSError) as e:
             if isinstance(e, OSError):
                 return {
@@ -311,7 +323,10 @@ class Api:
             ctx = self._parse_json(ctx_json, "contexto wizard")
         except ValueError as e:
             return {"ok": False, "error": str(e)}
-        motor_web.guardar_sesion_wizard(wizard, int(step), ctx)
+        try:
+            motor_web.guardar_sesion_wizard(wizard, int(step), ctx)
+        except (ValueError, TypeError, OverflowError) as e:
+            return {"ok": False, "error": str(e)}
         return {"ok": True}
 
     def cargar_sesion_wizard(self):

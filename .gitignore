@@ -23,3 +23,7 @@ dist/
 
 # Instalador .exe compilado (binario, no se versiona; se regenera con Inno Setup)
 installer/windows/*.exe
+
+# Evidencias locales de navegación y capturas de auditoría
+.playwright-cli/
+output/

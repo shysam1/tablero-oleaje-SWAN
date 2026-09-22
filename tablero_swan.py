@@ -66,8 +66,11 @@ def generar_tablero_swan(carpeta, ruta_png=None, utm_large=None, titulos=None):
     fig = _construir_figura(corrida, disponibles)
     ruta_png = Path(ruta_png) if ruta_png else \
         rutas.carpeta_salida(carpeta.name) / f"tablero_swan_{carpeta.name}.png"
-    fig.savefig(ruta_png, dpi=150, bbox_inches="tight")
-    plt.close(fig)
+    try:
+        ruta_png.parent.mkdir(parents=True, exist_ok=True)
+        fig.savefig(ruta_png, dpi=150, bbox_inches="tight")
+    finally:
+        plt.close(fig)
 
     print(f"\nTablero SWAN guardado en: {ruta_png}")
     return ruta_png

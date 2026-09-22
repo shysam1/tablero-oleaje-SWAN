@@ -1,0 +1,12 @@
+EJEMPLO SINTETICO PARA PROBAR LA APLICACION SIN CUENTA ERA5
+
+oleaje_demo_sintetico.csv contiene 240 registros inventados con fines de prueba,
+separados cada tres horas desde el 1 de enero de 2024. No son observaciones,
+reanálisis ni resultados de SWAN. No usarlos en un proyecto de ingeniería.
+
+En la app: Analizar oleaje en un punto > Tengo un archivo > Archivo...
+Selecciona este CSV, avanza a Revisión y genera el tablero.
+
+Columnas: anio, mes, dia, hora, Hs [m], Tp [s], Dir [grados náuticos de procedencia].
+Los paneles de extremos y climatología se omiten porque el registro es corto.
+Se puede hacer esta prueba sin internet después de instalar las dependencias.

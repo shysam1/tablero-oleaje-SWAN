@@ -34,6 +34,7 @@ echo "Salida:   $DMG_OUT"
 echo ""
 
 # --- Limpiar staging ---
+case "$STAGING" in "$PROYECTO"/dist/staging_mac) ;; *) echo "Destino staging inseguro"; exit 1 ;; esac
 rm -rf "$STAGING"
 mkdir -p "$RES"
 [ -f "$DMG_OUT" ] && rm -f "$DMG_OUT"
@@ -44,41 +45,15 @@ mkdir -p "$APP_OUT/Contents/MacOS"
 cp "$PLANTILLA/Contents/MacOS/launcher" "$APP_OUT/Contents/MacOS/launcher"
 chmod +x "$APP_OUT/Contents/MacOS/launcher"
 
+# --- La misma lista explicita que el ZIP y el instalador Windows ---
+python3 "$PROYECTO/scripts/empaquetar.py" --proyecto "$PROYECTO" --destino "$RES"
+
 # --- Icono (si existe) ---
 if [ -f "$PROYECTO/assets/tablero.icns" ]; then
   cp "$PROYECTO/assets/tablero.icns" "$RES/tablero.icns"
 else
   echo "AVISO: no existe assets/tablero.icns; el bundle usara el icono por defecto."
 fi
-
-# --- Carpetas de codigo a incluir en Resources ---
-CARPETAS=( "ui" "assets" "scripts" "GUIAS DE USO" )
-for c in "${CARPETAS[@]}"; do
-  if [ -d "$PROYECTO/$c" ]; then
-    echo "  + carpeta $c"
-    rsync -a --exclude "__pycache__" --exclude ".pytest_cache" "$PROYECTO/$c/" "$RES/$c/"
-  fi
-done
-
-# --- Archivos sueltos a incluir en Resources ---
-ARCHIVOS=(
-  "requirements.txt"
-  "app_web.py" "api_web.py" "motor_web.py" "sistema.py" "config.py"
-  "rutas.py" "seguridad.py" "tablero_oleaje.py" "tablero_swan.py"
-  "video_swan.py" "previews.py" "productos.py" "productos_swan.py"
-  "productos_particion.py" "particion_espectral.py" "validacion.py"
-  "io_oleaje.py" "io_era5.py" "io_swan.py" "io_swan_nonst.py"
-  "io_batimetria.py" "geo_malla.py" "borde_oleaje.py" "swan_builder.py"
-  "swan_runner.py" "prioridad.py" "app_tablero.py" "asistente.py"
-  "estilo.py" "gui_swan.py" "pasos_analizar.py" "pasos_modelar.py" "pasos_ver.py"
-)
-for f in "${ARCHIVOS[@]}"; do
-  if [ -f "$PROYECTO/$f" ]; then
-    cp "$PROYECTO/$f" "$RES/$f"
-  else
-    echo "AVISO: no se encontro '$f'; se omite."
-  fi
-done
 
 # --- Permisos de ejecucion en los scripts ---
 chmod +x "$RES/scripts/launch_mac.sh" 2>/dev/null || true

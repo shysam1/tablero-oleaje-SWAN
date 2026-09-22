@@ -80,6 +80,7 @@ window.Tablero = window.Tablero || {};
 
   const taskWaiters = {};
   const taskRenewals = {};
+  const completedTasks = {};
 
   window.dispatchPyEvent = function (payload) {
     const { event, data } = payload;
@@ -90,16 +91,28 @@ window.Tablero = window.Tablero || {};
       }
       Object.values(taskRenewals).forEach((arm) => arm());
     }
-    if (event === "progress") T.setProgress(data.i, data.n);
-    if (event === "task_start") T.setBusy(true, true);
+    if (event === "progress") {
+      T.setProgress(data.i, data.n);
+      Object.values(taskRenewals).forEach((arm) => arm());
+    }
+    if (event === "task_start") {
+      delete completedTasks[data.id];
+      T.setBusy(true, true);
+    }
     if (event === "task_done") {
       T.setBusy(false);
       const w = taskWaiters[data.id];
       if (w) { w(data); delete taskWaiters[data.id]; delete taskRenewals[data.id]; }
+      else completedTasks[data.id] = data;
     }
   };
 
   T.waitTask = (id, timeoutMs = 600000, opts = {}) => {
+    if (completedTasks[id]) {
+      const resultado = completedTasks[id];
+      delete completedTasks[id];
+      return Promise.resolve(resultado);
+    }
     const renewOnActivity = Boolean(opts.renewOnActivity);
     const msgTimeout = opts.timeoutMessage || "Tiempo de espera agotado.";
     return new Promise((resolve) => {
@@ -108,10 +121,8 @@ window.Tablero = window.Tablero || {};
         clearTimeout(timer);
         timer = setTimeout(() => {
           if (taskWaiters[id]) {
-            delete taskWaiters[id];
-            delete taskRenewals[id];
-            T.setBusy(false);
-            resolve({ ok: false, error: msgTimeout });
+            T.notify(msgTimeout + " La tarea sigue en curso; se mostrará el resultado cuando termine.", "warn");
+            arm();
           }
         }, timeoutMs);
       };
@@ -132,19 +143,33 @@ window.Tablero = window.Tablero || {};
     return Math.max(1, Math.round((t1 - t0) / 86400000) + 1);
   };
 
-  setInterval(() => { T.py("poll_eventos").catch(() => {}); }, 150);
+  let pollPending = false;
+  setInterval(async () => {
+    if (pollPending || !T.api()) return;
+    pollPending = true;
+    try { await T.py("poll_eventos"); }
+    finally { pollPending = false; }
+  }, 150);
 
   T.setBusy = (on, indeterminate = false) => {
     T.state.busy = on;
     const bar = document.querySelector(".progress-wrap");
     const inner = document.querySelector(".progress-bar");
-    if (!bar) return;
-    bar.classList.toggle("visible", on);
+    bar?.classList.toggle("visible", on);
     if (inner) {
       inner.classList.toggle("indeterminate", on && indeterminate);
       if (!on) inner.style.width = "0%";
     }
-    document.querySelectorAll(".btn.primary").forEach((b) => { b.disabled = on; });
+    document.querySelectorAll("button, input, select, textarea").forEach((b) => {
+      if (["swan-cancel", "swan-cancel-adv"].includes(b.id)) return;
+      if (on && b.dataset.busyDisabled === undefined) {
+        b.dataset.busyDisabled = String(b.disabled);
+        b.disabled = true;
+      } else if (!on && b.dataset.busyDisabled !== undefined) {
+        b.disabled = b.dataset.busyDisabled === "true";
+        delete b.dataset.busyDisabled;
+      }
+    });
   };
 
   T.setProgress = (i, n) => {
@@ -242,14 +267,12 @@ window.Tablero = window.Tablero || {};
 
   T.askBordeCondicion = () => new Promise((resolve) => {
     const dlg = document.getElementById("dlg-borde");
-    let cancelled = false;
+    dlg.returnValue = "";
     document.getElementById("borde-cancel").onclick = () => {
-      cancelled = true;
-      dlg.close();
-      resolve(null);
+      dlg.close("cancelar");
     };
     dlg.onclose = () => {
-      if (cancelled) return;
+      if (dlg.returnValue !== "aceptar") { resolve(null); return; }
       resolve({
         modo: dlg.querySelector('input[name="modo"]:checked')?.value,
         tr: document.getElementById("borde-tr").value,
@@ -260,14 +283,12 @@ window.Tablero = window.Tablero || {};
 
   T.askConfirm = (text) => new Promise((resolve) => {
     const dlg = document.getElementById("dlg-confirm");
-    let no = false;
+    dlg.returnValue = "";
     document.getElementById("confirm-text").textContent = text;
     document.getElementById("confirm-no").onclick = () => {
-      no = true;
-      dlg.close();
-      resolve(false);
+      dlg.close("cancelar");
     };
-    dlg.onclose = () => { if (!no) resolve(true); };
+    dlg.onclose = () => resolve(dlg.returnValue === "continuar");
     dlg.showModal();
   });
 
@@ -316,6 +337,9 @@ window.Tablero = window.Tablero || {};
   };
 
   T.startWizard = (id, ctx = null, step = 0) => {
+    if (T.state.busy) return;
+    if (!T.WIZARDS[id]) { T.notify("El asistente guardado no es válido."); return; }
+    step = Number.isInteger(step) && step >= 0 && step < T.WIZARDS[id].pasos.length ? step : 0;
     T.state.wizard = id;
     T.state.step = step;
     T.state.ctx = ctx || (id === "modelar" ? { dominios: [{}] } : {});

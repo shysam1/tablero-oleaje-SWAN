@@ -32,6 +32,7 @@ from matplotlib.gridspec import GridSpec
 
 from io_swan_nonst import cargar_corrida_nonst
 import rutas
+from productos_swan import _vectores_direccion
 
 # Apariencia por variable: mapa de color, mínimo de escala y etiqueta.
 ESCALAS = {
@@ -76,10 +77,9 @@ def _escala(da, vmin):
     return vmin, np.ceil(vmax) if vmax > 1 else np.ceil(vmax * 10) / 10
 
 
-def _componentes_dir(dir_deg):
-    """Vectores unitarios de la dirección (misma convención que el MATLAB del curso)."""
-    d = np.where(dir_deg >= 180, dir_deg - 360, dir_deg)
-    return np.cos(np.deg2rad(d)), np.sin(np.deg2rad(d))
+def _componentes_dir(dir_deg, convencion="cartesiana"):
+    """Vectores unitarios de propagación según la convención del archivo SWAN."""
+    return _vectores_direccion(dir_deg, convencion)
 
 
 def _fecha_txt(t):
@@ -102,7 +102,8 @@ def _dibujar_mapa(ax, ds, var, escala, con_dir=False, paso_q=3):
                    colors="k", linewidths=0.6)
     qv = None
     if con_dir and _hay_datos(ds.get("Dir")):
-        u0, v0 = _componentes_dir(ds["Dir"].isel(time=0).values)
+        u0, v0 = _componentes_dir(ds["Dir"].isel(time=0).values,
+                                  ds["Dir"].attrs.get("convencion", "cartesiana"))
         xs, ys = ds["x"].values[::paso_q], ds["y"].values[::paso_q]
         qv = ax.quiver(xs, ys, u0[::paso_q, ::paso_q], v0[::paso_q, ::paso_q],
                        color=[0.25, 0.25, 0.25], scale=28, width=0.004)
@@ -176,7 +177,8 @@ def animar_campo(corrida, var="Hs", dominio="large", salida=None,
     def actualizar(i):
         qm.set_array(ds[var].isel(time=i).values.ravel())
         if qv is not None:
-            u, v = _componentes_dir(ds["Dir"].isel(time=i).values)
+            u, v = _componentes_dir(ds["Dir"].isel(time=i).values,
+                                     ds["Dir"].attrs.get("convencion", "cartesiana"))
             qv.set_UVC(u[::3, ::3], v[::3, ::3])
         sup.set_text(f"{ds.attrs.get('titulo', dominio)} — {var}\n"
                      f"{_fecha_txt(tiempos[i])}")
@@ -185,7 +187,8 @@ def animar_campo(corrida, var="Hs", dominio="large", salida=None,
     anim = animation.FuncAnimation(fig, actualizar, frames=ds.sizes["time"],
                                    interval=1000 / fps, blit=False)
     return _guardar(anim, fig, salida, formato, fps,
-                    defecto=f"video_{var}_{dominio}", progreso=progreso)
+                    defecto=f"video_{var}_{dominio}", progreso=progreso,
+                    n_frames=ds.sizes["time"])
 
 
 def animar_multipanel(corrida, salida=None, fps=12, formato="auto", paso=1,
@@ -208,6 +211,8 @@ def animar_multipanel(corrida, salida=None, fps=12, formato="auto", paso=1,
     if n1 is not None:
         n1 = n1.isel(time=slice(None, None, paso))
     hay_n1 = n1 is not None and _nido_util(n1)
+    if hay_n1 and not np.array_equal(large["time"].values, n1["time"].values):
+        raise ValueError("Los dominios grande y anidado tienen tiempos distintos; no se pueden sincronizar.")
 
     esc_large = _escala(large["Hs"], 0.0)
     tiempos = large["time"].values
@@ -264,7 +269,8 @@ def animar_multipanel(corrida, salida=None, fps=12, formato="auto", paso=1,
         # datos válidos (_dibujar_mapa devuelve qv_g=None si no). Sin esta guarda,
         # actualizar el quiver inexistente reventaba la animación.
         if qv_g is not None:
-            u, v = _componentes_dir(large["Dir"].isel(time=i).values)
+            u, v = _componentes_dir(large["Dir"].isel(time=i).values,
+                                     large["Dir"].attrs.get("convencion", "cartesiana"))
             qv_g.set_UVC(u[::3, ::3], v[::3, ::3])
         if qm_n is not None:
             qm_n.set_array(n1["Hs"].isel(time=i).values.ravel())
@@ -276,7 +282,7 @@ def animar_multipanel(corrida, salida=None, fps=12, formato="auto", paso=1,
     anim = animation.FuncAnimation(fig, actualizar, frames=large.sizes["time"],
                                    interval=1000 / fps, blit=False)
     return _guardar(anim, fig, salida, formato, fps, defecto="video_multipanel",
-                    progreso=progreso)
+                    progreso=progreso, n_frames=large.sizes["time"])
 
 
 def _dibujar_espectro_polar(ax, esp, t_idx, vmax):
@@ -287,7 +293,11 @@ def _dibujar_espectro_polar(ax, esp, t_idx, vmax):
     C = esp["Efth"].isel(time=t_idx).values
     pcm = ax.pcolormesh(TH, R, C, cmap="turbo", vmin=0, vmax=vmax, shading="auto")
     ax.set_rlabel_position(135)
-    ax.set_xlabel("Dirección (cartesiana) [°] · radio = frecuencia [Hz]", fontsize=9)
+    convencion = esp["dir"].attrs.get("convencion", "cartesiana")
+    if convencion == "nautica":
+        ax.set_theta_zero_location("N")
+        ax.set_theta_direction(-1)
+    ax.set_xlabel(f"Dirección ({convencion}) [°] · radio = frecuencia [Hz]", fontsize=9)
     return pcm
 
 
@@ -320,7 +330,7 @@ def animar_espectro(corrida, salida=None, fps=12, formato="auto", progreso=None)
     def _decorar(fig, ax, pcm, i):
         ax.set_rmax(rmax)
         cb = fig.colorbar(pcm, ax=ax, pad=0.1, fraction=0.046)
-        cb.set_label("Densidad de energía [m²/Hz/°]")
+        cb.set_label("Densidad de energía [m²/Hz/rad]")
         fecha = _fecha_txt(esp["time"].values[i])
         fig.suptitle(f"Espectro S(f,θ) en el punto\n{fecha}", fontsize=12)
 
@@ -348,7 +358,7 @@ def animar_espectro(corrida, salida=None, fps=12, formato="auto", progreso=None)
     pcm = _dibujar_espectro_polar(ax, sub, 0, vmax)
     ax.set_rmax(rmax)
     cb = fig.colorbar(pcm, ax=ax, pad=0.1, fraction=0.046)
-    cb.set_label("Densidad de energía [m²/Hz/°]")
+    cb.set_label("Densidad de energía [m²/Hz/rad]")
     sup = fig.suptitle("", fontsize=12)
     tiempos = sub["time"].values
 
@@ -360,21 +370,30 @@ def animar_espectro(corrida, salida=None, fps=12, formato="auto", progreso=None)
     anim = animation.FuncAnimation(fig, actualizar, frames=sub.sizes["time"],
                                    interval=1000 / fps, blit=False)
     return _guardar(anim, fig, salida, formato, fps, defecto="video_espectro",
-                    progreso=progreso)
+                    progreso=progreso, n_frames=sub.sizes["time"])
 
 
-def _guardar(anim, fig, salida, formato, fps, defecto, progreso=None):
+def _guardar(anim, fig, salida, formato, fps, defecto, progreso=None, n_frames=None):
     """Guarda la animación eligiendo escritor y extensión; cierra la figura.
     progreso: callback(frame_actual, total) para reportar avance (GUI)."""
     writer, ext = _writer(formato, fps)
+    if ext == ".gif" and n_frames:
+        ancho, alto = fig.get_size_inches() * 130
+        memoria = ancho * alto * 4 * n_frames
+        if memoria > 512 * 1024**2:
+            plt.close(fig)
+            raise ValueError(
+                "El GIF excedería 512 MiB de memoria. Instala ffmpeg para generar MP4 "
+                "o aumenta el paso entre cuadros y vuelve a intentarlo.")
     if salida is None:
         salida = Path.cwd() / defecto
     salida = Path(salida)
-    if salida.suffix.lower() not in (".mp4", ".gif"):
-        salida = salida.with_suffix(ext)
+    salida = salida.with_suffix(ext)
     salida.parent.mkdir(parents=True, exist_ok=True)
-    anim.save(salida, writer=writer, dpi=130, progress_callback=progreso)
-    plt.close(fig)
+    try:
+        anim.save(salida, writer=writer, dpi=130, progress_callback=progreso)
+    finally:
+        plt.close(fig)
     return salida
 
 

@@ -44,7 +44,8 @@ window.Tablero = window.Tablero || {};
       const done = await T.waitTask("swan_existente");
       if (done.ok) {
         T.appendLog(done.result.log);
-        T.setStatus("Listo.");
+        T.setStatus(done.result.cancelado ? "Cancelado." : (done.result.ok ? "Listo." : "Error."),
+          done.result.ok ? "listo" : "err");
       } else {
         T.appendLog(done.error || done.result?.log);
         T.setStatus("Error.", "err");
@@ -72,19 +73,27 @@ window.Tablero = window.Tablero || {};
       if (T.state.wizard === "ver") await T.wizardVer.onNext();
     },
     async next() {
-      const ok = await this.validate();
-      if (!ok) return;
-      this.collectStep();
-      await this.onNext();
-      const w = T.WIZARDS[T.state.wizard];
-      if (T.state.step >= w.pasos.length - 1) {
-        T.py("limpiar_sesion_wizard");
-        T.views.renderInicio();
-        return;
+      if (T.state.busy || this.navigating) return;
+      this.navigating = true;
+      T.setBusy(true, true);
+      try {
+        const ok = await this.validate();
+        if (!ok) return;
+        this.collectStep();
+        await this.onNext();
+        const w = T.WIZARDS[T.state.wizard];
+        if (T.state.step >= w.pasos.length - 1) {
+          T.py("limpiar_sesion_wizard");
+          T.views.renderInicio();
+          return;
+        }
+        T.state.step++;
+        T.persistirSesion();
+        T.renderWizard();
+      } finally {
+        this.navigating = false;
+        T.setBusy(false);
       }
-      T.state.step++;
-      T.persistirSesion();
-      T.renderWizard();
     },
   };
 
@@ -365,7 +374,7 @@ window.Tablero = window.Tablero || {};
           <p>Python: ${T.esc(info.python || "—")}</p>
           <p>Salidas: <code>${T.esc(info.salidas || "")}</code></p>
           <p>Repositorio: <code>${T.esc(info.repo || "")}</code></p>
-          <p class="hint">Documentación: README.md y HANDOFF.md en la carpeta del proyecto.</p>
+          <p class="hint">Documentación: README.md y GUIAS DE USO en la carpeta de la aplicación.</p>
           <button type="button" class="btn secondary" id="abrir-salidas">Abrir carpeta salidas</button>
         </div>`;
       document.getElementById("abrir-salidas").onclick = () => {

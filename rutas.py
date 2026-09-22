@@ -12,6 +12,7 @@ Program Files), las salidas van a la carpeta de datos del usuario.
 
 import os
 import sys
+import tempfile
 from pathlib import Path
 
 import seguridad
@@ -21,9 +22,8 @@ def _directorio_escribible(directorio: Path) -> bool:
     """True si se puede crear y borrar un archivo temporal en el directorio."""
     try:
         directorio.mkdir(parents=True, exist_ok=True)
-        prueba = directorio / ".test_escritura"
-        prueba.write_text("", encoding="utf-8")
-        prueba.unlink()
+        with tempfile.TemporaryFile(dir=directorio):
+            pass
         return True
     except OSError:
         return False
@@ -32,14 +32,18 @@ def _directorio_escribible(directorio: Path) -> bool:
 def _raiz_datos_usuario() -> Path:
     """Carpeta de datos del usuario cuando el código no es escribible."""
     if sys.platform == "win32":
-        return Path(os.environ["LOCALAPPDATA"]) / "Tablero de Oleaje"
-    return Path.home() / ".local" / "share" / "Tablero de Oleaje"
+        base = Path(os.environ.get("LOCALAPPDATA") or Path.home() / "AppData" / "Local")
+    elif sys.platform == "darwin":
+        base = Path.home() / "Library" / "Application Support"
+    else:
+        base = Path(os.environ.get("XDG_DATA_HOME") or Path.home() / ".local" / "share")
+    return base / "Tablero de Oleaje"
 
 
 def _raiz_salidas() -> Path:
     """Raíz de salidas: junto al código si es escribible, si no bajo datos de usuario."""
     codigo = Path(__file__).parent
-    if _directorio_escribible(codigo):
+    if _directorio_escribible(codigo / "salidas"):
         return codigo / "salidas"
     return _raiz_datos_usuario() / "salidas"
 

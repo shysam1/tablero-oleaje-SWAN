@@ -32,7 +32,7 @@ import tablero_swan
 import validacion
 import video_swan
 
-_VERSION_APP = "2026.06.27"
+_VERSION_APP = "1.0.1 + auditoría 2026-09-22"
 _MAX_RECIENTES = 12
 _RESOLUCION_ETOPO_KM = 1.85
 # Nombres únicos al copiar batimetrías al caso anidado (evita sobrescritura).
@@ -115,7 +115,7 @@ def _validar_era5(lat, lon, inicio, fin):
 
 
 def _ruta_usuario(ruta, etiqueta="ruta", debe_existir=False):
-    """Ruta absoluta confinada al home del usuario o salidas/."""
+    """Ruta local autorizada por ubicación o selección en diálogo nativo."""
     return seguridad.confina_usuario(ruta, etiqueta=etiqueta, debe_existir=debe_existir)
 
 
@@ -264,7 +264,7 @@ def descargar_era5(lat, lon, inicio, fin, con_viento=True, con_espectro=False,
     with redirect_stdout(buffer):
         _log(f"Coordenada ({lat:.3f}, {lon:.3f}), rango {inicio} → {fin}.")
         _, nc = io_era5.ruta_cache_serie(lat, lon, inicio, fin)
-        if io_era5._serie_cache_limpia(nc):
+        if io_era5._serie_cache_limpia(nc, incluir_viento=con_viento):
             _log("Serie ya en caché local; no se pide al CDS.")
         else:
             _log("Solicitando al Copernicus CDS (cola del servidor; "
@@ -527,12 +527,19 @@ def comparar_series(ruta_a, ruta_b):
         m = pd.merge(a, b, on="time", suffixes=("_a", "_b"))
         if m.empty:
             raise ValueError("No hay pasos temporales en común entre las dos series.")
+        m = m[np.isfinite(m["Hs_a"]) & np.isfinite(m["Hs_b"])]
+        if m.empty:
+            raise ValueError("No hay pares de Hs finitos en el periodo común.")
         diff = m["Hs_a"] - m["Hs_b"]
+        corr = None
+        if len(m) > 2 and m["Hs_a"].std() > 0 and m["Hs_b"].std() > 0:
+            valor_corr = float(m["Hs_a"].corr(m["Hs_b"]))
+            corr = valor_corr if np.isfinite(valor_corr) else None
         return {
             "n": int(len(m)),
             "bias": float(diff.mean()),
             "rmse": float((diff ** 2).mean() ** 0.5),
-            "corr": float(m["Hs_a"].corr(m["Hs_b"])) if len(m) > 2 else None,
+            "corr": corr,
             "hs_a_media": float(m["Hs_a"].mean()),
             "hs_b_media": float(m["Hs_b"].mean()),
         }
@@ -598,13 +605,14 @@ def guardar_preferencias(prefs):
     """Persiste preferencias de UI (coords ERA5, UTM, etc.)."""
     if not isinstance(prefs, dict):
         return
-    actuales = config.obtener("preferencias_ui") or {}
+    actuales = obtener_preferencias()
     actuales.update(prefs)
     config.guardar("preferencias_ui", actuales)
 
 
 def obtener_preferencias():
-    return config.obtener("preferencias_ui") or {}
+    prefs = config.obtener("preferencias_ui")
+    return prefs if isinstance(prefs, dict) else {}
 
 
 def registrar_producto(ruta, tipo):
@@ -629,12 +637,19 @@ def registrar_producto(ruta, tipo):
 
 def listar_recientes():
     recientes = config.obtener("productos_recientes") or []
+    if not isinstance(recientes, list):
+        return []
     out = []
     for item in recientes:
+        if not isinstance(item, dict) or not isinstance(item.get("ruta"), str):
+            continue
         p = Path(item.get("ruta", ""))
         if not p.is_file():
             continue
-        thumb = previews.imagen_a_base64(p) if p.suffix.lower() == ".png" else None
+        try:
+            thumb = previews.imagen_a_base64(p) if p.suffix.lower() == ".png" else None
+        except (OSError, ValueError):
+            thumb = None
         out.append({**item, "existe": True, "thumb": thumb})
     return out
 
@@ -667,9 +682,9 @@ def eliminar_cache_era5(carpeta):
     p = _ruta_usuario(carpeta, "Caché ERA5", debe_existir=True)
     if not p.is_dir():
         raise ValueError("No es una carpeta válida.")
-    if "ERA5_" not in p.name:
+    if not p.name.startswith("ERA5_"):
         raise ValueError("Solo se pueden borrar carpetas ERA5_* bajo salidas/.")
-    if not p.resolve().is_relative_to(rutas.RAIZ_SALIDAS.resolve()):
+    if p.parent != rutas.RAIZ_SALIDAS.resolve():
         raise ValueError("La carpeta no está bajo salidas/.")
     shutil.rmtree(p)
     return {"ok": True}
@@ -744,13 +759,26 @@ def info_aplicacion():
 
 
 def guardar_sesion_wizard(wizard, step, ctx):
+    limites = {"analizar": 3, "modelar": 6, "ver": 3}
+    if (not isinstance(wizard, str) or wizard not in limites or not isinstance(step, int)
+            or not 0 <= step < limites[wizard] or not isinstance(ctx, dict)):
+        raise ValueError("Sesión de asistente inválida.")
     config.guardar("wizard_sesion", {
         "wizard": wizard, "step": step, "ctx": ctx,
     })
 
 
 def cargar_sesion_wizard():
-    return config.obtener("wizard_sesion")
+    sesion = config.obtener("wizard_sesion")
+    limites = {"analizar": 3, "modelar": 6, "ver": 3}
+    if not isinstance(sesion, dict):
+        return None
+    wizard, step, ctx = (sesion.get(k) for k in ("wizard", "step", "ctx"))
+    if (not isinstance(wizard, str) or wizard not in limites
+            or not isinstance(step, int) or not 0 <= step < limites[wizard]
+            or not isinstance(ctx, dict)):
+        return None
+    return sesion
 
 
 def limpiar_sesion_wizard():

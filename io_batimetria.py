@@ -105,7 +105,11 @@ def generar_bot(malla, zona_utm, carpeta, raster=None, nombre="bati.bot", margen
         raise ValueError("mxc y myc deben ser > 0.")
     if float(malla["xlenc"]) <= 0 or float(malla["ylenc"]) <= 0:
         raise ValueError("xlenc y ylenc deben ser > 0.")
+    if not np.isfinite([malla[k] for k in ("xpc", "ypc", "xlenc", "ylenc")]).all():
+        raise ValueError("La malla contiene valores no finitos.")
     nx, ny = mxc + 1, myc + 1
+    if nx * ny > 4_000_000:
+        raise ValueError("La malla supera el límite de 4.000.000 de nodos para generar batimetría.")
     dx = float(malla["xlenc"]) / mxc
     dy = float(malla["ylenc"]) / myc
     xs = float(malla["xpc"]) + np.arange(nx) * dx       # oeste→este
@@ -124,9 +128,13 @@ def generar_bot(malla, zona_utm, carpeta, raster=None, nombre="bati.bot", margen
                                   float(lon_nodos.max()) + margen,
                                   carpeta / "_raster_bati.nc")
 
+    raster = _normalizar_raster(raster)
     lats = raster["lat"].values
     lons = raster["lon"].values
-    elev = np.asarray(raster["elevation"].values, dtype=float)
+    elev = np.asarray(raster["elevation"].transpose("lat", "lon").values, dtype=float)
+    if (lat_nodos.min() < lats.min() - 1e-9 or lat_nodos.max() > lats.max() + 1e-9 or
+            lon_nodos.min() < lons.min() - 1e-9 or lon_nodos.max() > lons.max() + 1e-9):
+        raise ValueError("El raster de batimetría no cubre toda la malla; selecciona un recorte mayor.")
     interp = RegularGridInterpolator((lats, lons), elev,
                                      bounds_error=False, fill_value=None)
     # Recortar al rango del raster: en los bordes usa el valor del borde (no extrapola).
@@ -140,9 +148,9 @@ def generar_bot(malla, zona_utm, carpeta, raster=None, nombre="bati.bot", margen
     import seguridad
     nombre_seguro = seguridad.sanitizar_segmento(nombre, "nombre del .bot")
     ruta = carpeta / nombre_seguro
-    if np.any(np.isnan(bat)):
+    if not np.isfinite(bat).all():
         raise ValueError(
-            "La batimetría contiene nodos sin dato (NaN). Reduce el dominio o "
+            "La batimetría contiene nodos sin dato (NaN o infinito). Reduce el dominio o "
             "usa un raster que cubra toda la malla.")
     ruta.write_text("\n".join(f"{v:.2f}" for v in bat))
 
@@ -157,24 +165,43 @@ def generar_bot(malla, zona_utm, carpeta, raster=None, nombre="bati.bot", margen
 _BASE_ERDDAP = "https://coastwatch.pfeg.noaa.gov/erddap/griddap"
 _DATASET_ERDDAP = "etopo180"
 _VAR_ERDDAP = "altitude"
+_BASE_ERDDAP_RESPALDO = "https://data.pmel.noaa.gov/socat/erddap/griddap"
 
 
-def _url_erddap(lat_min, lat_max, lon_min, lon_max):
+def _url_erddap(lat_min, lat_max, lon_min, lon_max, base=None):
     """URL ERDDAP (.nc) del recorte por bbox del dataset de batimetría."""
     rango = (f"%5B({lat_min}):({lat_max})%5D"
              f"%5B({lon_min}):({lon_max})%5D")
-    return f"{_BASE_ERDDAP}/{_DATASET_ERDDAP}.nc?{_VAR_ERDDAP}{rango}"
+    return f"{base or _BASE_ERDDAP}/{_DATASET_ERDDAP}.nc?{_VAR_ERDDAP}{rango}"
 
 
 def descargar_raster(lat_min, lat_max, lon_min, lon_max, destino):
-    """Descarga el recorte de batimetría por HTTP y lo devuelve normalizado."""
+    """Descarga ETOPO1; prueba el espejo NOAA PMEL si falla CoastWatch."""
+    errores = []
+    for base in (_BASE_ERDDAP, _BASE_ERDDAP_RESPALDO):
+        url = _url_erddap(lat_min, lat_max, lon_min, lon_max, base=base)
+        try:
+            ds = _descargar_raster_url(url, destino)
+            ds.attrs["fuente_descarga"] = url
+            if errores:
+                print("  [aviso] CoastWatch no respondió; batimetría ETOPO1 obtenida del espejo NOAA PMEL.")
+            return ds
+        except (RuntimeError, OSError, ValueError) as exc:
+            errores.append(str(exc))
+    raise RuntimeError("Falló la descarga de batimetría en ambos servidores NOAA. "
+                       + errores[-1])
+
+
+def _descargar_raster_url(url, destino):
+    """Descarga y verifica una respuesta antes de reemplazar la caché local."""
     import urllib.request
     import urllib.error
-    url = _url_erddap(lat_min, lat_max, lon_min, lon_max)
+    import os
+    import tempfile
     destino = Path(destino)
     destino.parent.mkdir(parents=True, exist_ok=True)
     try:
-        with urllib.request.urlopen(url, timeout=120) as resp:
+        with urllib.request.urlopen(url, timeout=20) as resp:
             status = getattr(resp, "status", None) or resp.getcode()
             tipo = resp.headers.get_content_type()
             cuerpo = resp.read()
@@ -201,15 +228,23 @@ def descargar_raster(lat_min, lat_max, lon_min, lon_max, destino):
     if status and status != 200:
         raise RuntimeError(f"El servidor de batimetría respondió código {status}.")
     es_netcdf = cuerpo[:3] == b"CDF" or cuerpo[:4] == b"\x89HDF"
-    if "netcdf" not in (tipo or "") and not es_netcdf:
+    if not es_netcdf:
         muestra = cuerpo[:300].decode("utf-8", "ignore").strip()
         raise RuntimeError(
             "La respuesta del servidor de batimetría no es un NetCDF válido "
             f"(content-type {tipo!r}). Usa un archivo de batimetría local. "
             f"Detalle: {muestra}")
-    destino.write_bytes(cuerpo)
-    with xr.open_dataset(destino) as raw:
-        return _normalizar_raster(raw.load())
+    fd, nombre_temporal = tempfile.mkstemp(suffix=".nc", dir=destino.parent)
+    temporal = Path(nombre_temporal)
+    try:
+        with os.fdopen(fd, "wb") as archivo:
+            archivo.write(cuerpo)
+        with xr.open_dataset(temporal) as raw:
+            ds = _normalizar_raster(raw.load())
+        temporal.replace(destino)
+        return ds
+    finally:
+        temporal.unlink(missing_ok=True)
 
 
 def leer_raster_local(ruta):

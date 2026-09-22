@@ -13,6 +13,8 @@ oleaje hacia la costa que usa el usuario; el resto se edita a mano si hace falta
 
 from pathlib import Path
 import math
+from datetime import datetime
+import re
 
 import seguridad
 
@@ -26,6 +28,12 @@ _ARCHIVO = {"Hs": "Hs.txt", "Tp": "Tp.txt", "Dir": "Dir.txt", "Setup": "Setup.tx
 def _completar(malla, batimetria):
     """Aplica los valores por defecto de malla e INPGRID (igual que construir_swn)."""
     m = {"alpc": 0.0, "mdc": 180, "flow": 0.04, "fhigh": 1.0, "msc": 30, **malla}
+    for clave in ("xpc", "ypc", "xlenc", "ylenc", "mxc", "myc", "alpc", "mdc", "msc", "flow", "fhigh"):
+        if not math.isfinite(float(m[clave])):
+            raise ValueError(f"La malla requiere un valor finito para {clave}.")
+    for clave in ("mxc", "myc", "mdc", "msc"):
+        if float(m[clave]) != int(m[clave]):
+            raise ValueError(f"{clave} debe ser un número entero.")
     if m["mxc"] <= 0 or m["myc"] <= 0:
         raise ValueError("mxc y myc deben ser > 0.")
     if m["xlenc"] <= 0 or m["ylenc"] <= 0:
@@ -114,7 +122,8 @@ def validar_caso(malla, batimetria, bordes, carpeta=None, requiere_bordes=True):
 def construir_swn(nombre, malla, batimetria, bordes, salidas=("Hs", "Tp", "Dir"),
                   estacionario=True, tiempo=None, friccion=True, setup=True,
                   viento=False, cuadruples=False, gamma_rotura=0.29,
-                  nido=None, bou_nest=None, punto_espectral=None):
+                  nido=None, bou_nest=None, punto_espectral=None,
+                  prefijo_salidas=""):
     """
     Devuelve el texto de un .swn.
 
@@ -136,6 +145,23 @@ def construir_swn(nombre, malla, batimetria, bordes, salidas=("Hs", "Tp", "Dir")
     m, b = _completar(malla, batimetria)
     nombre = seguridad.escapar_comilla_swan(nombre)
     bot_file = seguridad.escapar_comilla_swan(b["archivo"])
+    if prefijo_salidas:
+        prefijo_salidas = seguridad.sanitizar_nombre_caso(prefijo_salidas) + "_"
+    salida_temporal = ""
+    if not estacionario:
+        t = tiempo or {}
+        try:
+            inicio = datetime.strptime(str(t["inicio"]), "%Y%m%d.%H%M%S")
+            fin = datetime.strptime(str(t["fin"]), "%Y%m%d.%H%M%S")
+            paso = re.fullmatch(r"\s*(\d+(?:\.\d+)?)\s*(SEC|MIN|HR|DAY)?\s*",
+                                str(t["paso"]), flags=re.I)
+            if paso is None or float(paso[1]) <= 0 or fin <= inicio:
+                raise ValueError
+        except (KeyError, TypeError, ValueError) as exc:
+            raise ValueError("Modo no estacionario requiere inicio y fin YYYYMMDD.HHMMSS "
+                             "ordenados, y paso positivo con unidad SEC, MIN, HR o DAY.") from exc
+        intervalo = f"{paso[1]} {(paso[2] or 'SEC').upper()}"
+        salida_temporal = f" OUT {t['inicio']} {intervalo}"
 
     L = ["$ Archivo SWAN generado por el Tablero de Oleaje",
          f"PROJ '{nombre}' '1'",
@@ -149,6 +175,8 @@ def construir_swn(nombre, malla, batimetria, bordes, salidas=("Hs", "Tp", "Dir")
          f"INPGRID BOTTOM {b['xpinp']} {b['ypinp']} {b['alpinp']} "
          f"{b['mxinp']} {b['myinp']} {b['dxinp']} {b['dyinp']}",
          f"READINP BOTTOM {b['fac']} '{bot_file}' {b['idla']} 0 FREE"]
+    if not estacionario:
+        L.insert(2, "MODE NONSTATIONARY")
 
     L += ["$", "$*********** Condiciones de borde ***********"]
     if bou_nest:
@@ -181,26 +209,22 @@ def construir_swn(nombre, malla, batimetria, bordes, salidas=("Hs", "Tp", "Dir")
                  f"{nido['xlenn']} {nido['ylenn']} {nido['mxn']} {nido['myn']}")
     for var in salidas:
         if var in _QUANT:
-            L.append(f"BLOCK 'COMPGRID' NOHEADER '{_ARCHIVO[var]}' {_QUANT[var]}")
+            archivo_salida = _ARCHIVO[var] if estacionario else f"{var}.mat"
+            L.append(f"BLOCK 'COMPGRID' NOHEADER '{prefijo_salidas}{archivo_salida}' "
+                     f"{_QUANT[var]}{salida_temporal}")
     if nido:
-        L.append(f"NESTOUT '{sname}' '{nestfile}'")
+        L.append(f"NESTOUT '{sname}' '{nestfile}'{salida_temporal}")
     if punto_espectral:
         pe = punto_espectral
         spec_arch = seguridad.escapar_comilla_swan(pe["archivo"])
         L.append(f"POINTS 'SpecOut' {pe['x']} {pe['y']}")
-        L.append(f"SPEC 'SpecOut' SPEC2D ABS '{spec_arch}'")
+        L.append(f"SPEC 'SpecOut' SPEC2D ABS '{spec_arch}'{salida_temporal}")
 
     L.append("$")
     if estacionario:
         L.append("COMPUTE")
     else:
-        t = tiempo or {}
-        for clave in ("inicio", "paso", "fin"):
-            if not str(t.get(clave, "")).strip():
-                raise ValueError(
-                    "Modo no estacionario requiere inicio, paso y fin "
-                    "(formato YYYYMMDD.HHMMSS).")
-        L.append(f"COMPUTE NONSTAT {t['inicio']} {t['paso']} {t['fin']}")
+        L.append(f"COMPUTE NONSTAT {t['inicio']} {intervalo} {t['fin']}")
     L += ["STOP", ""]
     return "\n".join(L)
 
@@ -268,6 +292,8 @@ def escribir_par_anidado(carpeta, nombre_grande, nombre_nido, malla_g, bat_g,
     carpeta.mkdir(parents=True, exist_ok=True)
     stem_g = seguridad.sanitizar_nombre_caso(Path(str(nombre_grande)).stem)
     stem_n = seguridad.sanitizar_nombre_caso(Path(str(nombre_nido)).stem)
+    if stem_g.casefold() == stem_n.casefold():
+        raise ValueError("El dominio grande y el nido necesitan nombres distintos.")
     sname, nestfile = "nido1", "nest1"
     nido = {"sname": sname, "nestfile": nestfile,
             "xpn": malla_n["xpc"], "ypn": malla_n["ypc"],
@@ -276,12 +302,14 @@ def escribir_par_anidado(carpeta, nombre_grande, nombre_nido, malla_g, bat_g,
     ruta_g = (carpeta / stem_g).with_suffix(".swn")
     ruta_g.write_text(construir_swn(stem_g, malla_g, bat_g, bordes,
                                     salidas=salidas, estacionario=estacionario,
-                                    tiempo=tiempo, nido=nido), encoding="utf-8")
+                                    tiempo=tiempo, nido=nido,
+                                    prefijo_salidas=stem_g), encoding="utf-8")
     ruta_n = (carpeta / stem_n).with_suffix(".swn")
     ruta_n.write_text(construir_swn(stem_n, malla_n, bat_n, [],
                                     salidas=salidas, estacionario=estacionario,
                                     tiempo=tiempo, bou_nest=nestfile,
-                                    punto_espectral=punto_espectral),
+                                    punto_espectral=punto_espectral,
+                                    prefijo_salidas=stem_n),
                       encoding="utf-8")
     return ruta_g, ruta_n
 

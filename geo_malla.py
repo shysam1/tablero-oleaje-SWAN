@@ -7,6 +7,7 @@ la zona UTM sola, para no tener que saber el origen UTM a mano.
 """
 
 from pyproj import Transformer
+import math
 
 from io_batimetria import epsg_utm
 
@@ -31,7 +32,10 @@ def malla_desde_latlon(lat_centro, lon_centro, ancho_km, alto_km, celda_m):
     del centro. Devuelve {xpc, ypc, xlenc, ylenc, mxc, myc, zona_utm}. Lanza
     ValueError si los datos no son físicos.
     """
-    if not -90.0 <= lat_centro <= 90.0:
+    if not all(math.isfinite(float(v)) for v in
+               (lat_centro, lon_centro, ancho_km, alto_km, celda_m)):
+        raise ValueError("La definición de malla debe contener números finitos.")
+    if not -80.0 <= lat_centro <= 84.0:
         raise ValueError(f"Latitud fuera de rango: {lat_centro}")
     if not -180.0 <= lon_centro <= 180.0:
         raise ValueError(f"Longitud fuera de rango: {lon_centro}")

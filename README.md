@@ -5,19 +5,35 @@ Herramienta para analizar oleaje y modelos **SWAN**, de extremo a extremo:
 Construida de forma iterativa como ejercicio de dirigir IA y verificar con criterio
 de ingeniería (xarray + NetCDF, propagación de oleaje costero).
 
+## Estado de la copia auditada (22 de septiembre de 2026)
+
+Esta copia incorpora correcciones de instalación, interfaz, lectura de datos,
+estadísticas y SWAN. Los instaladores publicados **1.0.0/1.0.1 no contienen estas
+correcciones**. La entrega ZIP se genera desde una lista explícita de archivos,
+sin preferencias, credenciales, resultados ni entornos del desarrollador.
+
+Se probó una instalación limpia en Windows con Python 3.13 de 64 bits, apertura
+WebView2 y generación de un tablero desde la interfaz. Esto aún **no es una
+aplicación autónoma**: necesita Python y conexión para instalar librerías la
+primera vez. La prueba se hizo en el mismo equipo; falta validación en otra
+cuenta/equipo y en macOS. Las versiones resueltas de Windows/Python 3.13 están
+fijadas en `requirements-windows-py313.lock`; otras combinaciones no se certifican.
+
+El informe del repositorio está en `docs/AUDITORIA_2026-09-22.md`.
+
 ## Capturas
 
 | Inicio | Modelar con SWAN (wizard) |
 |---|---|
 | ![Inicio](docs/capturas/01_inicio.png) | ![Modelar](docs/capturas/02_modelar.png) |
 
-## Descarga (recomendado)
+## Descarga publicada (versión anterior)
 
 **Instalador Windows — descarga directa del `.exe`:**
 
 👉 **[Releases → Tablero de Oleaje 1.0.1](https://github.com/shysam1/tablero-oleaje-SWAN/releases/tag/v1.0.1)**
 
-1. Descarga **`Tablero_Oleaje_Setup_1.0.1.exe`**
+1. Descarga **`Tablero_Oleaje_Setup_1.0.1.exe`** (versión anterior a esta auditoría)
 2. Ejecuta el instalador (si SmartScreen avisa: *Más información* → *Ejecutar de todas formas*)
 3. Abre la app desde el acceso directo del Escritorio o menú Inicio
 
@@ -66,10 +82,20 @@ salidas/
     *.mp4 / *.gif  ← videos (si aplica)
 ```
 
+Si esa ubicación no permite escritura, se utiliza la carpeta de datos del
+usuario (`%LOCALAPPDATA%\Tablero de Oleaje\salidas` en Windows y
+`~/Library/Application Support/Tablero de Oleaje/salidas` en macOS). **Acerca de**
+muestra la ruta efectiva.
+
 ## Demo de portafolio (rápida)
 
 - Si ya tienes una corrida SWAN en disco: usa **«Ver una corrida SWAN ya hecha»** y genera el tablero/video.
-- Si no tienes datos a mano: usa **«Analizar oleaje en un punto»** y descarga una serie corta de ERA5 (por ejemplo 1–3 meses) para probar el flujo sin esperar horas.
+- Para probar sin cuenta CDS, usa **«Analizar oleaje en un punto» → «Tengo un archivo»**
+  y selecciona `ejemplos/oleaje_demo_sintetico.csv`. Son datos sintéticos, exclusivos
+  para comprobar el funcionamiento; los paneles de extremos se omiten por duración.
+- ERA5 necesita una cuenta propia y aceptación de los términos del dataset.
+  La nueva petición espectral se verificó con documentación oficial y pruebas
+  simuladas; su descarga autenticada real sigue pendiente.
 
 ## Modo guiado
 
@@ -162,18 +188,23 @@ Todas las salidas van a `salidas\<fuente>\`, una subcarpeta por archivo o corrid
 - **Registro adaptativo**: cada producto declara lo que necesita; el pipeline
   genera sólo lo que los datos permiten y reporta lo que falta. Por eso el nido no
   estacionario de Coronel (inestable, casi todo NaN) se omite sin romper nada.
-- **Genérico, no atado a Coronel**: los dominios se detectan del `CGRID`; la
+- **Dominios por metadatos**: los dominios se detectan del `CGRID`; la
   variable de cada salida SWAN, del comando `BLOCK` del `.swn` (cantidad HS/TPS/
   DIR/SETUP), no del nombre del archivo. El offset UTM del dominio grande es un
   parámetro (`utm_large`); el del nido se deriva de su `CGRID`.
+- **Alcance de formatos SWAN**: se comprobaron los archivos generados por la app
+  y las corridas históricas de Coronel. No se admite cualquier formato externo:
+  factores/IDLA alternativos, fondos INPGRID distintos de CGRID, HEADER o varias
+  cantidades por BLOCK requieren revisión. Mallas rotadas/esféricas se rechazan;
+  no interpretar este lector como universal.
 - **Orientación verificada contra MATLAB**: misma convención `flipud` y rellenos
   `−9/−999 → NaN`; el peak del evento cae en el mismo paso que el script del curso.
 
 ## Requisitos
 
-Python **3.11+** con `numpy`, `pandas`, `xarray`, `netcdf4`, `scipy`, `matplotlib`,
-`windrose`, `cmocean`, `scikit-image` (partición espectral) y `cdsapi` (descarga
-ERA5). Opcionales: `ffmpeg` (MP4; si no, GIF), `pytest` (tests).
+Python **3.11+ de 64 bits**, dependencias declaradas en `requirements.txt`.
+Windows/Python 3.13 fue la combinación verificada en esta auditoría.
+Opcionales: `ffmpeg` (MP4; GIF para animaciones pequeñas si no está), `pytest` (tests).
 Para *Procesar SWAN*, SWAN instalado y `swanrun` en el PATH.
 
 ### Credenciales ERA5 (descarga por coordenada)
@@ -183,7 +214,7 @@ propia cuenta** (gratis):
 
 1. Crea una cuenta en [cds.climate.copernicus.eu](https://cds.climate.copernicus.eu) y acepta los términos
    del dataset ERA5.
-2. En la app web: barra lateral → **Credenciales ERA5** → pega tu `UID:API-KEY`,
+2. En la app web: barra lateral → **Credenciales ERA5** → pega tu token personal (PAT),
    guarda y opcionalmente prueba la conexión.
 
 Alternativa manual: archivo `~/.cdsapirc` (en Windows,
@@ -191,7 +222,7 @@ Alternativa manual: archivo `~/.cdsapirc` (en Windows,
 
    ```
    url: https://cds.climate.copernicus.eu/api
-   key: <UID>:<API-KEY>
+   key: <TOKEN-PERSONAL>
    ```
 
 Sin credenciales válidas, el botón "Descargar ERA5…" avisa y no intenta descargar.
@@ -199,7 +230,7 @@ Sin credenciales válidas, el botón "Descargar ERA5…" avisa y no intenta desc
 ## Tests
 
 ```powershell
-pytest test_regresion.py test_asistente.py -v
+python -m pytest -q --capture=sys --basetemp="$env:USERPROFILE\pytest-tablero"
 ```
 
 `test_regresion.py` carga las corridas conocidas y comprueba los valores clave (Hs

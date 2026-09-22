@@ -46,7 +46,24 @@ def _span_dias(ds):
 
 def _n_anios(ds):
     """Número de años distintos con dato (tamaño de la serie de máximos anuales)."""
-    return int(ds["Hs"].groupby("time.year").max().sizes.get("year", 0))
+    return int(_maximos_anuales_validos(ds).sizes.get("year", 0))
+
+
+def _maximos_anuales_validos(ds):
+    """Excluye años sin Hs finitos y alturas negativas del ajuste estadístico."""
+    hs = ds["Hs"].where(np.isfinite(ds["Hs"]) & (ds["Hs"] >= 0))
+    return hs.groupby("time.year").max().dropna("year")
+
+
+def ajustar_gumbel(ds):
+    """Ajusta máximos anuales no degenerados y valida la escala obtenida."""
+    maximos = np.sort(_maximos_anuales_validos(ds).values)
+    if maximos.size < 2 or np.ptp(maximos) <= np.finfo(float).eps:
+        raise ValueError("Gumbel requiere al menos 2 máximos anuales finitos y distintos.")
+    loc, scale = stats.gumbel_r.fit(maximos)
+    if not np.isfinite(loc) or not np.isfinite(scale) or scale <= 0:
+        raise ValueError("El ajuste de Gumbel no produjo una escala válida.")
+    return maximos, loc, scale
 
 
 def datos_suficientes_multi_anual(ds):
@@ -69,9 +86,20 @@ def _calc_resumen(ds):
     filas = []
     for v in ("Hs", "Tp", "Dir"):
         if v in ds.data_vars:
-            da = ds[v]
-            filas.append((v, float(da.mean()), float(da.std()),
-                          float(da.min()), float(da.max())))
+            datos = np.asarray(ds[v].values, float)
+            datos = datos[np.isfinite(datos)]
+            if not datos.size:
+                continue
+            media, desv = float(datos.mean()), float(datos.std())
+            if v == "Dir":
+                datos = datos % 360.0
+                media = float(stats.circmean(datos, high=360)) % 360.0
+                if np.isclose(media, 360.0):
+                    media = 0.0
+                desv = float(stats.circstd(datos, high=360))
+            filas.append((v, media, desv, float(datos.min()), float(datos.max())))
+    if not filas:
+        raise ValueError("No hay valores finitos para el resumen estadístico.")
     return {"filas": filas, "n": int(ds.sizes.get("time", 0))}
 
 
@@ -86,6 +114,9 @@ def _dib_resumen(ax, r):
     tabla.set_fontsize(9)
     tabla.scale(1, 1.5)
     ax.set_title(f"Resumen estadístico (N = {r['n']})")
+    if any(fila[0] == "Dir" for fila in r["filas"]):
+        ax.text(0.5, 0.12, "Dir: media y desviación circulares", ha="center",
+                transform=ax.transAxes, fontsize=8)
 
 
 # --- Serie temporal de Hs (nativa o media mensual según duración) ---
@@ -136,8 +167,7 @@ def _calc_excedencia(ds):
     if hs.size == 0:
         raise ValueError("No hay Hs finitos para la curva de excedencia.")
     prob = np.arange(1, hs.size + 1) / hs.size * 100
-    crudo = ds["Hs"].values
-    percentiles = {p: float(np.nanpercentile(crudo, p)) for p in (50, 90, 99)}
+    percentiles = {p: float(np.percentile(hs, p)) for p in (50, 90, 99)}
     return {"hs": hs, "prob": prob, "percentiles": percentiles}
 
 
@@ -183,14 +213,13 @@ def _calc_retorno(ds, periodos=(2, 5, 10, 25, 50, 100)):
         raise ValueError(
             f"El ajuste de Gumbel necesita ≥ {_MIN_ANIOS_CLIMA} años de registro "
             f"y span ≥ {_MIN_DIAS_MULTI_ANUAL} días (hay {n} año(s), span {dias} d).")
-    maximos = np.sort(ds["Hs"].groupby("time.year").max().values)
+    maximos, loc, scale = ajustar_gumbel(ds)
     n = maximos.size
     if n < 2:
         raise ValueError(
             f"El ajuste de Gumbel necesita ≥ 2 años de máximos anuales (hay {n}).")
 
     # Ajuste de Gumbel (valores extremos tipo I) por máxima verosimilitud.
-    loc, scale = stats.gumbel_r.fit(maximos)
 
     # Posición de ploteo de Gringorten -> período de retorno empírico [años].
     m = np.arange(1, n + 1)                       # rango ascendente
@@ -250,7 +279,11 @@ def _dib_rayleigh(ax, r):
 
 # --- Histograma conjunto Hs-Tp ---
 def _calc_hstp(ds):
-    return {"hs": ds["Hs"].values, "tp": ds["Tp"].values}
+    hs, tp = ds["Hs"].values, ds["Tp"].values
+    validos = np.isfinite(hs) & np.isfinite(tp)
+    if not validos.any():
+        raise ValueError("No hay pares Hs–Tp finitos para el histograma conjunto.")
+    return {"hs": hs[validos], "tp": tp[validos]}
 
 
 def _dib_hstp(ax, r):
@@ -263,7 +296,7 @@ def _dib_hstp(ax, r):
 
 # --- Rosa de oleaje (eje polar) ---
 def _calc_rosa(ds):
-    return {"dir": ds["Dir"].values, "hs": ds["Hs"].values}
+    return {"dir": ds["Dir"].values % 360.0, "hs": ds["Hs"].values}
 
 
 def _dib_rosa(ax, r):

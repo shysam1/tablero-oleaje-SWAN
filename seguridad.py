@@ -7,11 +7,22 @@ para evitar path traversal, nombres de caso inválidos y rutas fuera de base.
 
 import math
 import re
+import threading
 from pathlib import Path
 from urllib.parse import urlparse
 
 # Lista blanca para nombres de caso SWAN: sin espacios (swanrun.bat parte ahí).
 _NOMBRE_CASO_OK = re.compile(r"^[A-Za-z0-9._-]+$")
+_RUTAS_ELEGIDAS = {}
+_RUTAS_LOCK = threading.Lock()
+
+
+def registrar_ruta_elegida(ruta):
+    """Autoriza durante esta sesión una selección del diálogo nativo."""
+    destino = Path(ruta).expanduser().resolve(strict=True)
+    with _RUTAS_LOCK:
+        _RUTAS_ELEGIDAS[destino] = destino.is_dir()
+    return destino
 
 
 def sanitizar_segmento(nombre, etiqueta="nombre"):
@@ -143,7 +154,7 @@ def _bases_usuario():
 
 def confina_usuario(ruta, etiqueta="ruta", debe_existir=False):
     """
-    Resuelve `ruta` y comprueba que quede bajo el home del usuario o salidas/.
+    Acepta home, salidas o rutas elegidas explícitamente en el diálogo nativo.
     Lanza ValueError si escapa o (opcionalmente) no existe.
     """
     if ruta is None or not str(ruta).strip():
@@ -157,8 +168,13 @@ def confina_usuario(ruta, etiqueta="ruta", debe_existir=False):
             return dest
         except ValueError:
             continue
+    with _RUTAS_LOCK:
+        for elegida, es_carpeta in _RUTAS_ELEGIDAS.items():
+            if dest == elegida or (es_carpeta and dest.is_relative_to(elegida)):
+                return dest
     raise ValueError(
-        f"{etiqueta} fuera de las carpetas permitidas del usuario: {ruta}")
+        f"{etiqueta} fuera de las carpetas permitidas: {ruta}. "
+        "Selecciona el archivo o carpeta con el botón de la aplicación.")
 
 
 def referencia_swan_segura(carpeta, ref):

@@ -34,7 +34,10 @@ import numpy as np
 import scipy.io as sio
 import xarray as xr
 
-from io_swan import EXCEPCION, ATRIBUTOS
+from io_swan import (EXCEPCION, ATRIBUTOS, _leer_cgrid, _dominio_grande_swn,
+                     _mapa_salidas, _utm_dominio, _bot_de_dominio,
+                     _convencion_direccion, inferir_utm_desde_carpeta,
+                     _validar_cabecera_espectro)
 
 # Offset UTM del nodo (0,0) del dominio grande. Sin valor por defecto distinto,
 # este es el de la corrida Coronel; para otra corrida se pasa a cargar_corrida.
@@ -48,33 +51,6 @@ _PATRON_TS = re.compile(r"_(\d{8})_(\d{6})$")
 
 # Sello de tiempo de los bloques del espectro SWAN: YYYYMMDD.HHMMSS
 _PATRON_TS_ESPEC = re.compile(r"\s*(\d{8})\.(\d{6})")
-
-
-def _leer_cgrid(ruta_swn):
-    """
-    Extrae la geometría de malla del comando CGRID de un .swn, incluyendo el
-    origen LOCAL (xpc, ypc) necesario para ubicar un dominio anidado.
-    """
-    for linea in Path(ruta_swn).read_text().splitlines():
-        partes = linea.split()
-        if partes and partes[0].upper() == "CGRID":
-            # CGRID xpc ypc alpc xlenc ylenc mxc myc … → se necesitan 8 tokens.
-            if len(partes) < 8:
-                raise ValueError(
-                    f"CGRID incompleto en {Path(ruta_swn).name}: {linea.strip()!r}")
-            x0, y0 = float(partes[1]), float(partes[2])
-            xlenc, ylenc = float(partes[4]), float(partes[5])
-            mxc, myc = int(partes[6]), int(partes[7])
-            # mxc/myc son el nº de celdas: con 0 la malla es degenerada y dx/dy
-            # dividirían por cero.
-            if mxc <= 0 or myc <= 0:
-                raise ValueError(
-                    f"CGRID con mxc/myc no positivos ({mxc}, {myc}) en "
-                    f"{Path(ruta_swn).name}; deben ser ≥ 1.")
-            return {"nx": mxc + 1, "ny": myc + 1,
-                    "dx": xlenc / mxc, "dy": ylenc / myc,
-                    "x0_local": x0, "y0_local": y0}
-    raise ValueError(f"No se encontró CGRID en {ruta_swn}")
 
 
 def _orientar(mat, excepcion):
@@ -109,6 +85,13 @@ def leer_mat_temporal(ruta_mat, nx, ny, excepcion):
     cubo numpy ya orientado (flipud) y con NaN en los rellenos. El prefijo del
     nombre es irrelevante para el orden: éste se fija por el sello de tiempo.
     """
+    info = sio.whosmat(str(ruta_mat))
+    valores = sum(int(np.prod(forma)) for nombre, forma, _ in info
+                  if _PATRON_TS.search(nombre))
+    if valores * 8 > 512 * 1024**2:
+        raise ValueError(
+            f"{Path(ruta_mat).name}: la serie excede 512 MiB por campo; "
+            "recorta el período o reduce la resolución antes de cargarla.")
     mat = sio.loadmat(ruta_mat)
     entradas = []
     for nombre, arr in mat.items():
@@ -127,6 +110,10 @@ def leer_mat_temporal(ruta_mat, nx, ny, excepcion):
                          f"se esperaban ({ny}, {nx})")
 
     tiempos = [ts for ts, _ in entradas]
+    if len(set(tiempos)) != len(tiempos):
+        raise ValueError(f"{Path(ruta_mat).name}: contiene tiempos duplicados o varias cantidades por archivo.")
+    if any(np.asarray(arr).shape != (ny, nx) for _, arr in entradas):
+        raise ValueError(f"{Path(ruta_mat).name}: las matrices temporales tienen tamaños distintos.")
     cubo = np.stack([_orientar(arr, excepcion) for _, arr in entradas])
     return tiempos, cubo
 
@@ -147,6 +134,7 @@ def leer_espectro_temporal(ruta):
     lineas = ruta.read_text().splitlines()
     if not lineas or not lineas[0].upper().startswith("SWAN"):
         return None
+    conversion = _validar_cabecera_espectro(lineas, ruta.name)
 
     def _vals(i, n):                       # lee n valores escalares desde la línea i
         out = []
@@ -160,6 +148,7 @@ def leer_espectro_temporal(ruta):
 
     # --- Encabezado: frecuencias, direcciones y valor de excepción ---
     freqs = dirs = None
+    convencion = "cartesiana"
     excepcion = -99.0
     i = 0
     while i < len(lineas):
@@ -169,6 +158,7 @@ def leer_espectro_temporal(ruta):
                 raise ValueError(f"{ruta.name}: encabezado {clave} incompleto.")
             freqs, i = _vals(i + 2, int(lineas[i + 1].split()[0]))
         elif clave in ("CDIR", "NDIR"):
+            convencion = "nautica" if clave == "NDIR" else "cartesiana"
             if i + 1 >= len(lineas):
                 raise ValueError(f"{ruta.name}: encabezado {clave} incompleto.")
             dirs, i = _vals(i + 2, int(lineas[i + 1].split()[0]))
@@ -194,6 +184,8 @@ def leer_espectro_temporal(ruta):
         tiempos.append(datetime.strptime(m.group(1) + m.group(2), "%Y%m%d%H%M%S"))
         etiqueta = lineas[i + 1].strip() if i + 1 < len(lineas) else ""
         if etiqueta == "FACTOR":
+            if i + 2 >= len(lineas):
+                raise ValueError(f"{ruta.name}: bloque FACTOR truncado.")
             factor = float(lineas[i + 2].split()[0])
             base = i + 3
             if base + nf > len(lineas):
@@ -210,7 +202,7 @@ def leer_espectro_temporal(ruta):
                 filas.append(fila)
             mat = np.array(filas)
             with np.errstate(invalid="ignore"):
-                dens = mat * factor * (180.0 / np.pi)
+                dens = mat * factor * conversion
                 dens[np.isclose(mat, excepcion)] = np.nan
             cubos.append(dens)
             i = base + nf
@@ -229,7 +221,8 @@ def leer_espectro_temporal(ruta):
                 "freq": freqs, "dir": dirs})
     ds["Efth"].attrs = {"long_name": "Densidad de energía", "units": "m2/Hz/rad"}
     ds["freq"].attrs = {"long_name": "Frecuencia", "units": "Hz"}
-    ds["dir"].attrs = {"long_name": "Dirección (cartesiana)", "units": "deg"}
+    ds["dir"].attrs = {"long_name": f"Dirección ({convencion})", "units": "deg",
+                       "convencion": convencion}
     return ds
 
 
@@ -313,31 +306,34 @@ def _detectar_dominios(carpeta, utm_large, titulos):
     geos = {s: _leer_cgrid(s) for s in swns}
 
     # Dominio padre: origen local (0,0); si ninguno, el de mayor malla.
-    padres = [s for s, g in geos.items()
-              if g["x0_local"] == 0 and g["y0_local"] == 0]
-    padre = padres[0] if padres else max(geos, key=lambda s: geos[s]["nx"] * geos[s]["ny"])
+    padre, _ = _dominio_grande_swn(carpeta)
 
     inv = _inventario_mat(carpeta)
     bots = list(carpeta.glob("*.bot"))
 
-    def cfg_de(geo, utm, nombre, titulo):
+    mapa_block = _mapa_salidas(swns)
+
+    def cfg_de(geo, utm, swn, nombre, titulo):
         ny, nx = geo["ny"], geo["nx"]
+        declarados = _mapa_salidas([swn])
         campos = _asignar_campos([(var, ruta) for ruta, var, forma in inv
-                                  if forma == (ny, nx)])
-        bot = next((b for b in bots
-                    if len(Path(b).read_text().split()) == nx * ny), None)
+                                  if forma == (ny, nx) and
+                                  (ruta.name in declarados if declarados else
+                                   ruta.name not in mapa_block)])
+        bot = _bot_de_dominio(swn, bots, nx, ny)
         return {"geo": geo, "utm": utm, "campos": campos, "bot": bot,
+                "convencion_dir": _convencion_direccion(swn),
                 "titulo": titulos.get(nombre, titulo)}
 
-    dominios = {"large": cfg_de(geos[padre], utm_large, "large",
+    dominios = {"large": cfg_de(geos[padre], utm_large, padre, "large",
                                 "Dominio grande")}
     i = 1
     for s, g in geos.items():
         if s == padre:
             continue
-        utm = (utm_large[0] + g["x0_local"], utm_large[1] + g["y0_local"])
+        utm = _utm_dominio(g, geos[padre], utm_large)
         nombre = f"n{i}"
-        dominios[nombre] = cfg_de(g, utm, nombre, f"Dominio anidado {nombre}")
+        dominios[nombre] = cfg_de(g, utm, s, nombre, f"Dominio anidado {nombre}")
         i += 1
     return dominios
 
@@ -374,6 +370,8 @@ def _construir_dataset(cfg):
     ds = xr.Dataset(data_vars, coords=coords)
     for v in ds.data_vars:
         ds[v].attrs.update(ATRIBUTOS.get(v, {}))
+    if "Dir" in ds:
+        ds["Dir"].attrs["convencion"] = cfg["convencion_dir"]
     ds["x"].attrs.update({"long_name": "Este UTM", "units": "m"})
     ds["y"].attrs.update({"long_name": "Norte UTM", "units": "m"})
     if "time" in ds.coords:
@@ -382,7 +380,7 @@ def _construir_dataset(cfg):
     return ds
 
 
-def cargar_corrida_nonst(carpeta, utm_large=UTM_LARGE_DEFAULT, titulos=None):
+def cargar_corrida_nonst(carpeta, utm_large=None, titulos=None):
     """
     Carga una corrida SWAN no estacionaria completa desde su carpeta.
 
@@ -395,6 +393,11 @@ def cargar_corrida_nonst(carpeta, utm_large=UTM_LARGE_DEFAULT, titulos=None):
     (rango temporal y número de pasos del evento).
     """
     carpeta = Path(carpeta)
+    if utm_large is None:
+        meta_utm = inferir_utm_desde_carpeta(carpeta)
+        utm_large = (meta_utm["utm_x"], meta_utm["utm_y"])
+        if meta_utm["origen"] == "default":
+            print(f"  [aviso] {meta_utm['mensaje']}")
     cfgs = _detectar_dominios(carpeta, utm_large, titulos or {})
     dominios = {nombre: _construir_dataset(cfg)
                 for nombre, cfg in cfgs.items() if cfg.get("campos")}

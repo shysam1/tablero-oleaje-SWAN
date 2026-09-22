@@ -23,6 +23,7 @@ import numpy as np
 import xarray as xr
 
 import rutas
+from io_oleaje import NETCDF_LOCK, leer_netcdf
 
 _CDS_URL_DEFAULT = "https://cds.climate.copernicus.eu/api"
 
@@ -236,7 +237,7 @@ def _cliente():
 
 # Identificadores del CDS para cada producto.
 _DATASET_SERIE = "reanalysis-era5-single-levels"
-_DATASET_ESPECTRO = "reanalysis-era5-single-levels"   # var 2D wave spectra (d2fd)
+_DATASET_ESPECTRO = "reanalysis-era5-complete"   # espectros en el archivo MARS
 
 _VARS_SERIE = ["significant_height_of_combined_wind_waves_and_swell",
                "peak_wave_period", "mean_wave_direction"]
@@ -393,11 +394,10 @@ def _obtener_tramo_serie(lat, lon, inicio, fin, incluir_viento, carpeta, log_fn=
     Si el CDS rechaza el tamaño, subdivide el tramo y concatena.
     """
     chunk = _ruta_chunk(carpeta, inicio, fin)
-    if _serie_cache_limpia(chunk):
+    if _serie_cache_limpia(chunk, incluir_viento=incluir_viento):
         if log_fn:
             log_fn(f"  Tramo {inicio} → {fin}: caché local.")
-        with xr.open_dataset(chunk) as raw:
-            return raw.load()
+        return leer_netcdf(chunk)
 
     crudo = chunk.with_name(chunk.stem + "_cruda.nc")
     chunk.parent.mkdir(parents=True, exist_ok=True)
@@ -490,15 +490,13 @@ def _abrir_descarga_cds(ruta):
                     if not destino_m.is_relative_to(tmp_res):
                         raise ValueError(f"Entrada ZIP sospechosa: {nombre!r}")
                     z.extract(nombre, tmp)
-                    with xr.open_dataset(destino_m) as ds:
-                        datasets.append(ds.load())
+                    datasets.append(leer_netcdf(destino_m))
             if not datasets:
                 raise ValueError("El ZIP del CDS no contiene ningún .nc.")
             return datasets
         finally:
             shutil.rmtree(tmp, ignore_errors=True)
-    with xr.open_dataset(ruta) as ds:
-        return [ds.load()]
+    return [leer_netcdf(ruta)]
 
 
 _COORDS_EXTRA = ["latitude", "longitude", "number", "expver"]
@@ -660,7 +658,7 @@ def _retrieve_atomico(dataset, peticion, destino, log_fn=None):
         pulso_stop.set()
 
 
-def _serie_cache_limpia(ruta):
+def _serie_cache_limpia(ruta, incluir_viento=False):
     """
     True si el .nc cacheado ya es la serie PARSEADA del pipeline (abrible, con
     'Hs' y con la convención de dirección vigente). El CDS entrega una descarga
@@ -671,8 +669,10 @@ def _serie_cache_limpia(ruta):
     try:
         if not ruta.exists() or ruta.stat().st_size == 0:
             return False
-        with xr.open_dataset(ruta) as ds:
+        with NETCDF_LOCK, xr.open_dataset(ruta) as ds:
             return ("Hs" in ds.data_vars
+                    and (not incluir_viento or {"u10", "v10"} <= set(ds.data_vars))
+                    and ds.sizes.get("time", 0) > 0
                     and ds.attrs.get("dir_convencion") == "procedencia")
     except Exception:
         return False
@@ -680,9 +680,16 @@ def _serie_cache_limpia(ruta):
 
 def _escribir_nc_atomico(ds, destino):
     """Escribe `ds` a `destino` vía un .part + replace (nunca deja un .nc a medias)."""
-    tmp = destino.with_name(destino.name + ".part")
-    ds.to_netcdf(tmp)
-    tmp.replace(destino)
+    destino.parent.mkdir(parents=True, exist_ok=True)
+    with tempfile.NamedTemporaryFile(prefix=destino.name + ".", suffix=".part",
+                                     dir=destino.parent, delete=False) as archivo:
+        tmp = Path(archivo.name)
+    try:
+        with NETCDF_LOCK:
+            ds.to_netcdf(tmp)
+        tmp.replace(destino)
+    finally:
+        tmp.unlink(missing_ok=True)
 
 
 def descargar_serie(lat, lon, inicio, fin, incluir_viento=False, log_fn=None):
@@ -696,11 +703,10 @@ def descargar_serie(lat, lon, inicio, fin, incluir_viento=False, log_fn=None):
     """
     lat, lon = validar_coord_era5(lat, lon)
     carpeta, destino = ruta_cache_serie(lat, lon, inicio, fin)
-    if _serie_cache_limpia(destino):
+    if _serie_cache_limpia(destino, incluir_viento=incluir_viento):
         if log_fn:
             log_fn(f"Usando caché: {destino}")
-        with xr.open_dataset(destino) as raw:
-            return raw.load()
+        return leer_netcdf(destino)
 
     # Caché antigua: un único .nc crudo del CDS en la ruta final (pre-tramos).
     if destino.exists() and not (carpeta / "chunks").is_dir():
@@ -708,7 +714,8 @@ def descargar_serie(lat, lon, inicio, fin, incluir_viento=False, log_fn=None):
             if log_fn:
                 log_fn("Parseando descarga cruda en caché…")
             ds = _parsear_serie_nc(destino, lat, lon, inicio, fin)
-            if "Hs" in ds.data_vars:
+            if ("Hs" in ds.data_vars
+                    and (not incluir_viento or {"u10", "v10"} <= set(ds.data_vars))):
                 _escribir_nc_atomico(ds, destino)
                 if log_fn:
                     log_fn("Caché convertida a serie limpia.")
@@ -755,10 +762,12 @@ def _espectro_cache_limpia(ruta):
     try:
         if not ruta.exists() or ruta.stat().st_size == 0:
             return False
-        with xr.open_dataset(ruta) as ds:
+        with NETCDF_LOCK, xr.open_dataset(ruta) as ds:
             if "Efth" not in ds.data_vars:
                 return False
             if ds.attrs.get("ejes") != "fisicos":
+                return False
+            if ds.attrs.get("dir_convencion") != "procedencia":
                 return False
             dims = set(ds["Efth"].dims)
             espurias = dims & {"latitude", "longitude", "lat", "lon"}
@@ -768,13 +777,17 @@ def _espectro_cache_limpia(ruta):
 
 
 def _peticion_espectro(lat, lon, inicio, fin, delta=0.25):
-    """Petición CDS para espectro 2D direccional en un recuadro alrededor del punto."""
-    anios, meses, dias, horas = _rango_fechas(inicio, fin)
+    """Petición MARS: los espectros 2D no pertenecen al catálogo single-levels."""
+    inicio, fin = validar_rango_fechas(inicio, fin)
     return {
-        "product_type": "reanalysis",
-        "variable": _VARS_ESPECTRO,
-        "year": anios, "month": meses, "day": dias, "time": horas,
-        "area": [lat + delta, lon - delta, lat - delta, lon + delta],
+        "class": "ea", "expver": "1", "stream": "wave", "type": "an",
+        "levtype": "sfc", "param": "140251",
+        "date": f"{inicio}/to/{fin}",
+        "time": "/".join(f"{h:02d}:00:00" for h in range(0, 24, 3)),
+        "frequency": "1/to/30", "direction": "1/to/24",
+        "grid": [0.5, 0.5],
+        "area": [min(90, lat + delta), lon - delta,
+                 max(-90, lat - delta), lon + delta],
         "format": "netcdf",
     }
 
@@ -817,7 +830,7 @@ def _parsear_espectro_nc(ruta, lat=None, lon=None, inicio=None, fin=None):
     Maneja tanto el .nc plano (CDS antiguo) como el .zip por stream (CDS nuevo).
     """
     datasets = _abrir_descarga_cds(ruta)
-    bruto = next((d for d in datasets if "d2fd" in d.data_vars), None)
+    bruto = next((d for d in datasets if {"d2fd", "2dfd"} & set(d.data_vars)), None)
     if bruto is None:
         raise ValueError("La descarga ERA5 no incluye espectro 2D (d2fd).")
     if lat is not None and lon is not None:
@@ -829,7 +842,7 @@ def _parsear_espectro_nc(ruta, lat=None, lon=None, inicio=None, fin=None):
     if "valid_time" in bruto.variables:
         bruto = bruto.rename({"valid_time": "time"})
     bruto = _recortar_a_rango(bruto, inicio, fin)
-    d2fd = bruto["d2fd"]
+    d2fd = bruto["d2fd"] if "d2fd" in bruto else bruto["2dfd"]
     efth = np.power(10.0, np.asarray(d2fd, float))    # des-logueo; NaN se propaga
     efth = xr.DataArray(
         efth,
@@ -852,18 +865,27 @@ def _parsear_espectro_nc(ruta, lat=None, lon=None, inicio=None, fin=None):
     if "dir" in efth.dims and _ejes_como_indices(efth["dir"].values):
         n_d = efth.sizes["dir"]
         dir_hacia = 7.5 + _DDIR_ERA5 * np.arange(n_d)     # convención «hacia»
-        efth = efth.assign_coords(dir=(dir_hacia + 180.0) % 360.0)
-        efth = efth.sortby("dir")                          # eje ascendente
+        efth = efth.assign_coords(dir=dir_hacia)
+    if "dir" in efth.dims:
+        efth = efth.assign_coords(dir=(efth["dir"] + 180.0) % 360.0).sortby("dir")
+    if not {"freq", "dir"} <= set(efth.dims):
+        raise ValueError("El espectro ERA5 no contiene frecuencia y dirección.")
+    orden = (["time"] if "time" in efth.dims else []) + ["freq", "dir"]
+    if set(efth.dims) != set(orden):
+        raise ValueError("El espectro ERA5 debe reducirse a un solo punto geográfico.")
+    efth = efth.transpose(*orden)
 
     ds = xr.Dataset({"Efth": efth})
     # 10**d2fd queda en m²·s·rad⁻¹ (por radián), la unidad nativa de ERA5;
     # coherente con la integración en radianes de particion_espectral._pesos.
     ds["Efth"].attrs = {"long_name": "Densidad de energía", "units": "m2/Hz/rad"}
     ds.attrs["ejes"] = "fisicos"
+    ds.attrs["dir_convencion"] = "procedencia"
     if "freq" in ds.coords:
         ds["freq"].attrs = {"long_name": "Frecuencia", "units": "Hz"}
     if "dir" in ds.coords:
-        ds["dir"].attrs = {"long_name": "Dirección", "units": "deg"}
+        ds["dir"].attrs = {"long_name": "Dirección de procedencia", "units": "deg",
+                            "convencion": "nautica"}
     if lat is not None and lon is not None:
         ds.attrs["fuente"] = f"ERA5 espectro ({lat:.3f}, {lon:.3f})"
         if inicio is not None and fin is not None:
@@ -878,8 +900,7 @@ def _obtener_tramo_espectro(lat, lon, inicio, fin, carpeta, log_fn=None):
     if _espectro_cache_limpia(chunk):
         if log_fn:
             log_fn(f"  Tramo espectro {inicio} → {fin}: caché local.")
-        with xr.open_dataset(chunk) as raw:
-            return raw.load()
+        return leer_netcdf(chunk)
 
     crudo = chunk.with_name(chunk.stem + "_cruda.nc")
     chunk.parent.mkdir(parents=True, exist_ok=True)
@@ -957,8 +978,7 @@ def descargar_espectro(lat, lon, inicio, fin, log_fn=None):
     if _espectro_cache_limpia(destino):
         if log_fn:
             log_fn(f"Usando caché de espectro: {destino}")
-        with xr.open_dataset(destino) as raw:
-            return raw.load()
+        return leer_netcdf(destino)
 
     # Caché antigua: .nc crudo del CDS sin parsear en la ruta final.
     if destino.exists() and not (carpeta / "chunks_espectro").is_dir():

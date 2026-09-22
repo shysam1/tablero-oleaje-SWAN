@@ -1,0 +1,68 @@
+# Lista explicita: agregar aqui cada archivo nuevo necesario para ejecutar la app.
+Crear Tablero.bat
+GUIAS DE USO/GUIA DE USO MAC.txt
+GUIAS DE USO/GUIA DE USO WINDOWS.txt
+GUIAS DE USO/GUIA INSTALACION MAC.txt
+GUIAS DE USO/GUIA INSTALACION WINDOWS.txt
+LEEME PRIMERO.txt
+api_web.py
+app_tablero.py
+app_web.py
+asistente.py
+assets/icons/.version
+assets/icons/analizar.png
+assets/icons/modelar.png
+assets/icons/ver.png
+borde_oleaje.py
+config.py
+crear_acceso_directo.ps1
+estilo.py
+geo_malla.py
+gui_swan.py
+iniciar_mac.command
+iniciar_windows.bat
+io_batimetria.py
+io_era5.py
+io_oleaje.py
+io_swan.py
+io_swan_nonst.py
+motor_web.py
+particion_espectral.py
+pasos_analizar.py
+pasos_modelar.py
+pasos_ver.py
+previews.py
+prioridad.py
+productos.py
+productos_particion.py
+productos_swan.py
+requirements.txt
+requirements-windows-py313.lock
+rutas.py
+scripts/bootstrap_mac.sh
+scripts/bootstrap_windows.ps1
+scripts/estado_entorno.py
+scripts/launch_mac.sh
+scripts/launch_windows.bat
+seguridad.py
+sistema.py
+swan_builder.py
+swan_runner.py
+tablero_oleaje.py
+tablero_swan.py
+ui/app.js
+ui/index.html
+ui/js/core.js
+ui/js/feedback.js
+ui/js/views.js
+ui/js/wizard-analizar.js
+ui/js/wizard-modelar.js
+ui/js/wizard-ver.js
+ui/styles.css
+validacion.py
+video_swan.py
+README.md
+ejemplos/oleaje_demo_sintetico.csv
+ejemplos/LEEME.txt
+docs/capturas/01_inicio.png
+docs/capturas/02_modelar.png

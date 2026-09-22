@@ -1,0 +1,41 @@
+# Auditoría de portabilidad y distribución — 22 de septiembre de 2026
+
+Se inspeccionaron los lanzadores, las fuentes de instaladores Windows/macOS, el contenido de la entrega, las dependencias y las rutas persistentes. Se conservan los instaladores originales y no se publicó ninguna versión. La validación se realizó en Windows x64 con Python 3.13.13; las mejoras de macOS tienen revisión de código y sintaxis, no una prueba nativa.
+
+## Hallazgos corregidos
+
+| Prioridad | Fallo y efecto | Corrección y evidencia |
+|---|---|---|
+| Alta | El lanzador Windows consideraba lista la app por existir `.venv/Scripts/python.exe`. Un fallo de pip dejaba un entorno que nunca volvía a prepararse; actualizar requirements tampoco activaba la instalación. | Ambos sistemas usan `scripts/estado_entorno.py`. Se guarda un marcador únicamente tras importar todas las dependencias; su firma incluye intérprete, requisitos y versiones instaladas. La ausencia del marcador, cambios de requisitos o una dependencia ausente vuelven a activar la preparación. Tests de instalación incompleta, dependencia quitada, import fallido y cambio de requisitos/lock. |
+| Alta | Inno Setup copiaba el repositorio mediante un comodín y exclusiones. `.claude/settings.local.json`, `.env` o `.cdsapirc` no estaban excluidos. No se inspeccionó su contenido. | Se reemplazó el comodín por una lista explícita de 67 archivos (incluye README, ejemplo sintético y capturas). ZIP, fuentes Inno y empaquetado macOS usan `scripts/archivos_entrega.txt`. Prueba con archivos privados ficticios: ninguno entra en la entrega. Tampoco entran `.git`, `config.json`, resultados, logs, entornos, `.playwright-cli` ni `output`. |
+| Media | El bootstrap macOS actualizaba pip e instalaba requisitos en cada apertura, aunque el entorno estuviera completo. | La firma se comprueba localmente; el arranque habitual no llama a pip. Se retiró el upgrade automático de pip. El segundo bootstrap Windows pasó con `PIP_NO_INDEX=1` y URL de índice inválida en 1,33 segundos. La rama macOS equivalente no se probó en macOS. |
+| Media | Los scripts de entrega avisaban y omitían silenciosamente archivos faltantes; podían generar paquetes incompletos. | El empaquetador valida todos los archivos antes de generar contenido y termina con error si falta alguno. El ZIP solo reemplaza su destino cuando terminó la compresión. Los códigos de salida se conservan en lanzadores y `.bat` de entrega. |
+| Media | `config.json` podía contener JSON válido pero distinto de un objeto (`[]`, `null`, texto o número), haciendo fallar `.get` o asignaciones posteriores. | Se acepta únicamente un diccionario y se recuperan los demás casos con configuración vacía. Cinco entradas corruptas/incompatibles cubiertas por tests. |
+| Media | La sonda de escritura usaba un nombre fijo `.test_escritura`, con riesgo de sobrescribir un archivo existente o interferir con otra instancia. Además comprobaba la raíz del código, no la carpeta real de salidas. | Archivo temporal único y comprobación de `salidas/`. Test demuestra que el archivo previo se preserva y que una carpeta de salidas no escribible activa el fallback. |
+| Media | En macOS, el fallback de datos usaba `~/.local/share` mientras bootstrap y guías usaban Application Support. En Windows fallaba con `KeyError` si faltaba LOCALAPPDATA. | Rutas nativas: `~/Library/Application Support/Tablero de Oleaje`, LOCALAPPDATA con respaldo bajo el perfil, y XDG_DATA_HOME en Linux. |
+| Media | Finder puede ejecutar con PATH reducido y detectar solamente un Python antiguo del sistema aunque exista otro compatible. Los scripts `.command` con CRLF también fallan en bash. | Se buscan ubicaciones de python.org y Homebrew; se exige Python de 64 bits. ZIP/copia normalizan LF de `.sh`/`.command` y el ZIP guarda el permiso ejecutable. Se conserva la pausa del `.command` cuando falla el arranque. |
+| Media | Crear el acceso directo del proyecto borraba el acceso homónimo del Escritorio. | Se retiró ese borrado y `Crear Tablero.bat` no abre el enlace cuando falla su creación. |
+| Media | Rangos de requirements producían instalaciones distintas: el entorno global y la instalación limpia resolvieron versiones diferentes de NumPy, SciPy, Matplotlib, xarray y otras. | Se conservó `requirements.txt` para compatibilidad entre plataformas y se añadió `requirements-windows-py313.lock`, con las versiones exactas del entorno limpio. Windows/Python 3.13 lo aplica como constraints; modificarlo invalida el marcador. No se presenta como lock universal para otros Python o macOS. |
+
+## Pruebas ejecutadas
+
+1. **Instalación real desde una copia sin entorno:** `C:\Users\123ja\AppData\Local\Temp\Tablero_Auditoria_20260922_Instalacion`. Se copiaron únicamente archivos del manifiesto y se ejecutó su `scripts/bootstrap_windows.ps1` con Windows PowerShell. Creó `.venv` y descargó/instaló las dependencias; terminó con código 0. No se modificó Python global.
+2. **Consistencia del entorno:** `python -m pip check` devolvió `No broken requirements found.`. Importaciones de todas las dependencias, `api_web` y `motor_web` correctas.
+3. **Arranque sin índice de paquetes:** bootstrap posterior con `PIP_NO_INDEX=1` y `PIP_INDEX_URL=http://127.0.0.1:9/no-red`, código 0, 1,33 s. Tras incorporar constraints se repitió con `PIP_NO_INDEX=1`: validación y apertura siguiente, ambas código 0.
+4. **Regresiones:** `python -m pytest test_portabilidad.py test_regresion.py::test_raiz_salidas_fallback_localappdata -q` → **19 passed**. Incluye 18 casos nuevos y el fallback anterior.
+5. **Empaquetado ZIP real:** `powershell -NoProfile -ExecutionPolicy Bypass -File empaquetar_entrega.ps1 -NoAbrir`, 62 archivos; verificación CRC sin errores y sin nombres prohibidos. Esta prueba corresponde a un snapshot intermedio: el informe general identifica la entrega final tras integrar las demás áreas.
+6. **Compilación de fuentes Inno Setup:** ejecutada con salida separada en `C:\Users\123ja\AppData\Local\Temp\Tablero_Auditoria_20260922_Compilacion\Tablero_Oleaje_AUDITORIA_NO_PUBLICAR.exe`, código 0. No reemplaza ni publica los `.exe` originales. Compilar no equivale a instalar en una cuenta limpia.
+7. **Sintaxis bash:** `bash -n` correcto para bootstrap, lanzadores y empaquetador macOS. No valida Cocoa, Gatekeeper, firma ni montaje del DMG.
+
+## Límites y próximos pasos antes de recomendarla a terceros
+
+- **Todavía requiere Python, internet en la primera preparación y WebView2 en Windows.** No es un ejecutable autosuficiente; el instalador distribuye fuentes y prepara un entorno. Una distribución que no requiera instalar Python necesita otro trabajo de empaquetado y una prueba de actualización/desinstalación.
+- **Probar en otra cuenta/equipo Windows sin administrador.** Esta auditoría valida instalación de dependencias en un directorio limpio bajo el usuario actual; no demuestra el caso de otra cuenta, Windows recién instalado o WebView2 ausente. Las fuentes Inno mantienen `PrivilegesRequired=lowest` y LOCALAPPDATA.
+- **Probar macOS Intel y Apple Silicon.** No se construyó un DMG, no se abrió el bundle y no se verificaron los backends Cocoa/CPython en esos equipos. No afirmar compatibilidad completa a partir de `bash -n`.
+- **Python 3.11, 3.12 y versiones posteriores a 3.13 no se instalaron aquí.** Usan rangos compatibles de pip; la combinación congelada y comprobada es Windows x64/Python 3.13.
+- **SWAN, ffmpeg y CDS son requisitos independientes.** La instalación de las librerías no incluye el ejecutable SWAN, el runtime ffmpeg ni credenciales CDS. El informe general documenta las pruebas funcionales realizadas por el agente principal.
+- Las versiones del lock fijan el árbol de paquetes, pero no incluyen hashes de wheels ni un repositorio offline. Las actualizaciones deben regenerarse en un entorno aislado y pasar la suite antes de sustituirlo.
+
+## Mantenimiento de la entrega
+
+Cada archivo nuevo necesario en ejecución debe agregarse al manifiesto. `empaquetar_instalador.bat` regenera `installer/windows/archivos_entrega.iss` antes de compilar y el test compara ambos. Si se compila directamente desde Inno Setup, generar antes la lista mediante `python scripts/empaquetar.py --inno installer/windows/archivos_entrega.iss`. Los instaladores históricos no adquieren estas correcciones hasta generar y verificar una nueva distribución.

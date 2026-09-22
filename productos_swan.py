@@ -18,8 +18,11 @@ from matplotlib.colors import TwoSlopeNorm
 import productos_particion
 
 
-def _vectores_direccion(dir_grados):
-    """Componentes (u, v) de la dirección, según la convención de los .m."""
+def _vectores_direccion(dir_grados, convencion="cartesiana"):
+    """Vectores de propagación; una procedencia náutica se invierte hacia destino."""
+    if convencion == "nautica":
+        rad = np.deg2rad(dir_grados)
+        return -np.sin(rad), -np.cos(rad)
     d = np.where(dir_grados >= 180, dir_grados - 360, dir_grados)
     rad = np.deg2rad(d)
     return np.cos(rad), np.sin(rad)
@@ -41,7 +44,8 @@ def _mapa_campo(ax, ds, var, cmap="viridis", norm=None, con_direccion=False,
         ax.contour(x, y, prof, levels=6, colors="white", linewidths=0.4, alpha=0.5)
 
     if con_direccion and "Dir" in ds:
-        u, v = _vectores_direccion(ds["Dir"].values)
+        u, v = _vectores_direccion(ds["Dir"].values,
+                                   ds["Dir"].attrs.get("convencion", "cartesiana"))
         qx, qy = np.meshgrid(x, y)
         paso = max(1, min(len(x), len(y)) // 12)
         ax.quiver(qx[::paso, ::paso], qy[::paso, ::paso],
@@ -99,7 +103,11 @@ def _espectro_direccional(ax, ds_spec, meta):
     densidad = ds_spec["Efth"].values
     malla_t, malla_r = np.meshgrid(theta, r)
     pm = ax.pcolormesh(malla_t, malla_r, densidad, shading="auto", cmap="viridis")
-    ax.figure.colorbar(pm, ax=ax, label="S(f,θ) [m²/Hz/°]", shrink=0.7, pad=0.1)
+    ax.figure.colorbar(pm, ax=ax, label="S(f,θ) [m²/Hz/rad]", shrink=0.7, pad=0.1)
+    convencion = ds_spec["dir"].attrs.get("convencion", "cartesiana")
+    if convencion == "nautica":
+        ax.set_theta_zero_location("N")
+        ax.set_theta_direction(-1)
 
     # Acotar el radio a la banda que concentra ~99,5% de la energía (swell).
     marginal = np.nansum(densidad, axis=1)
@@ -111,7 +119,7 @@ def _espectro_direccional(ax, ds_spec, meta):
     idx = min(int(np.searchsorted(acumulada, 0.995)), len(r) - 1)
     ax.set_ylim(0, float(r[idx]))
     ax.set_rlabel_position(135)
-    ax.set_title("Espectro direccional S(f,θ)\n(punto SWAN, dir. cartesiana)",
+    ax.set_title(f"Espectro direccional S(f,θ)\n(punto SWAN, dir. {convencion})",
                  fontsize=9, pad=8)
 
 
