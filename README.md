@@ -1,248 +1,210 @@
-# Tablero de oleaje SWAN
+# Tablero Oleaje
 
-Herramienta para analizar oleaje y modelos **SWAN**, de extremo a extremo:
-**armar y correr el modelo → cargar resultados → generar tableros y videos**.
-Construida de forma iterativa como ejercicio de dirigir IA y verificar con criterio
-de ingeniería (xarray + NetCDF, propagación de oleaje costero).
+**Análisis de oleaje y modelación costera con SWAN, desde una aplicación de escritorio.**
 
-## Estado de la copia auditada (22 de septiembre de 2026)
+Tablero Oleaje reúne la carga de datos, la revisión de series, la preparación de
+casos SWAN y la visualización de resultados en una interfaz guiada. Permite
+transformar series de oleaje en tableros de gráficos y explorar simulaciones
+estacionarias o la evolución temporal de un evento mediante mapas y videos.
 
-Esta copia incorpora correcciones de instalación, interfaz, lectura de datos,
-estadísticas y SWAN. Los instaladores publicados **1.0.0/1.0.1 no contienen estas
-correcciones**. La entrega ZIP se genera desde una lista explícita de archivos,
-sin preferencias, credenciales, resultados ni entornos del desarrollador.
+[Qué puedes hacer](#qué-puedes-hacer) · [Instalación](#instalación) ·
+[Probar un ejemplo](#prueba-con-el-ejemplo-incluido) · [Documentación](#documentación)
 
-Se probó una instalación limpia en Windows con Python 3.13 de 64 bits, apertura
-WebView2 y generación de un tablero desde la interfaz. Esto aún **no es una
-aplicación autónoma**: necesita Python y conexión para instalar librerías la
-primera vez. La prueba se hizo en el mismo equipo; falta validación en otra
-cuenta/equipo y en macOS. Las versiones resueltas de Windows/Python 3.13 están
-fijadas en `requirements-windows-py313.lock`; otras combinaciones no se certifican.
+![Pantalla de inicio de Tablero Oleaje con sus cuatro opciones de trabajo](docs/capturas/03_inicio_actual.png)
 
-El informe del repositorio está en `docs/AUDITORIA_2026-09-22.md`.
+## Qué puedes hacer
 
-## Capturas
+La pantalla de inicio ofrece cuatro formas de trabajar:
 
-| Inicio | Modelar con SWAN (wizard) |
-|---|---|
-| ![Inicio](docs/capturas/01_inicio.png) | ![Modelar](docs/capturas/02_modelar.png) |
+| Flujo | Qué permite hacer | Resultado |
+|---|---|---|
+| **Analizar oleaje en un punto** | Cargar una serie `.mat`, `.csv` o `.nc`, o solicitar datos de ERA5; revisar variables y comparar Hs con una serie de referencia. | Tablero de curvas y estadísticas en PNG. |
+| **Modelar propagación con SWAN** | Definir una malla por latitud/longitud, preparar la batimetría y el borde, y ejecutar un caso con un dominio anidado opcional. | Archivos del modelo y mapas de resultados. |
+| **Procesar SWAN — caso existente** | Seleccionar una carpeta con sus archivos de entrada y ejecutar el modelo, con registro de progreso y cancelación. | Resultados de la corrida SWAN. |
+| **Ver una corrida SWAN ya hecha** | Cargar resultados compatibles e identificar si corresponden a una simulación estacionaria o no estacionaria. | Tablero de mapas o video de la evolución del oleaje. |
 
-## Descarga publicada (versión anterior)
+Los productos se adaptan a las variables y a la duración del registro. Cuando
+faltan datos para un panel, la app indica el motivo y genera los productos que
+sí están disponibles.
 
-**Instalador Windows — descarga directa del `.exe`:**
+### Gráficos y archivos de salida
 
-👉 **[Releases → Tablero de Oleaje 1.0.1](https://github.com/shysam1/tablero-oleaje-SWAN/releases/tag/v1.0.1)**
+- **Series de oleaje:** resumen de altura significativa (Hs), período de pico
+  (Tp) y dirección; evolución temporal, climatología, excedencia, rosa de oleaje
+  y análisis exploratorio de extremos mediante Gumbel.
+- **Espectros:** representación direccional y partición en familias cuando se
+  dispone de un espectro 2D. El espectro JONSWAP reconstruido se identifica como tal.
+- **Resultados SWAN:** mapas de Hs, dirección y otras variables disponibles,
+  además de animaciones para corridas no estacionarias.
+- **Exportación:** gráficos PNG, series convertidas a NetCDF y videos MP4 con
+  ffmpeg; GIF para animaciones pequeñas cuando ffmpeg no está disponible.
 
-1. Descarga **`Tablero_Oleaje_Setup_1.0.1.exe`** (versión anterior a esta auditoría)
-2. Ejecuta el instalador (si SmartScreen avisa: *Más información* → *Ejecutar de todas formas*)
-3. Abre la app desde el acceso directo del Escritorio o menú Inicio
+<details>
+<summary><strong>Ver un tablero generado con datos de ejemplo</strong></summary>
 
-**Requisitos:** Windows 10/11 (64 bits), **Python 3.11+** en el PATH
-([python.org](https://www.python.org/downloads/); marca *Add python.exe to PATH*),
-internet la **primera vez** que abras la app (descarga librerías) y WebView2
-(viene con Windows/Edge actualizado). SWAN y ffmpeg son opcionales.
+![Tablero con estadísticas, serie temporal, excedencia, histograma, rosa y espectro reconstruido a partir de datos sintéticos](docs/capturas/04_tablero_demo.png)
 
-Guía detallada dentro del instalador: `GUIAS DE USO\GUIA INSTALACION WINDOWS.txt`.
+El ejemplo es **sintético** y sirve para comprobar el funcionamiento. Los paneles
+de climatología y extremos se omiten porque el registro es corto.
 
-> **macOS:** instalador `.dmg` planificado; por ahora usa la carpeta del proyecto
-> con `iniciar_mac.command` (ver guía Mac en `GUIAS DE USO/`).
+</details>
 
-## Uso rápido (desarrollo / carpeta .zip)
+## Instalación
 
-Doble clic en **`iniciar_windows.bat`** o en **`Tablero de Oleaje.lnk`**
-(regenerar con `Crear Tablero.bat`), o desde consola:
+### Windows — versión actual del repositorio
+
+**[Descargar el código actualizado en ZIP](https://github.com/shysam1/tablero-oleaje-SWAN/archive/refs/heads/master.zip)**
+
+1. Instala [Python](https://www.python.org/downloads/windows/) de **64 bits** y
+   habilita la opción **Add python.exe to PATH**. La combinación comprobada en
+   la auditoría es Windows con **Python 3.13**; los lanzadores admiten 3.11 o superior.
+2. Extrae el ZIP completo en una carpeta donde puedas guardar archivos, por
+   ejemplo dentro de Documentos.
+3. Abre **`iniciar_windows.bat`** con doble clic.
+4. Espera la preparación inicial. El lanzador crea el entorno `.venv`, instala
+   las dependencias y abre la aplicación.
+
+También puedes iniciarla desde PowerShell, dentro de la carpeta extraída:
 
 ```powershell
 .\iniciar_windows.bat
 ```
 
-La interfaz es **solo web** (pywebview + WebView2) en `ui/`. No uses
-`app_tablero.py`: si lo ejecutas, redirige a la web.
+La primera preparación requiere internet. Las siguientes aperturas reutilizan
+el entorno instalado; trabajar con archivos locales no requiere una cuenta ERA5.
+La ventana utiliza [Microsoft Edge WebView2](https://developer.microsoft.com/microsoft-edge/webview2/).
+Si falta ese componente, debe instalarse para abrir la interfaz.
 
-El lanzador crea `.venv` e instala `requirements.txt` automáticamente la primera vez
-(vía `scripts/bootstrap_windows.ps1` + `scripts/launch_windows.bat`).
+> **Qué incluye esta descarga:** el código y los recursos de la aplicación.
+> Todavía requiere Python y la instalación inicial de librerías. El instalador
+> de [la release v1.0.1](https://github.com/shysam1/tablero-oleaje-SWAN/releases/tag/v1.0.1)
+> es una versión anterior y no incorpora las correcciones de septiembre de 2026.
 
-**Windows:** lee `GUIAS DE USO\GUIA DE USO WINDOWS.txt` si falta Python, WebView2 o alguna librería.
+### Herramientas opcionales
 
-**macOS:** lee `GUIAS DE USO\GUIA DE USO MAC.txt` y haz doble clic en `iniciar_mac.command`.
-
-**Empaquetar para entregar:** `empaquetar_entrega.bat` → `.zip` en `dist\`.
-**Compilar instalador Windows:** `empaquetar_instalador.bat` → `.exe` en `installer\windows\`.
-
-Atajos en la UI web: **Enter** = Siguiente, **Esc** = Atrás, **Ctrl+L** = limpiar log.
-
-## Dónde quedan las salidas
-
-Todo se guarda bajo `salidas/` dentro del proyecto, en una subcarpeta por archivo o corrida:
-
-```text
-salidas/
-  <fuente>/        ← archivo de entrada o carpeta de corrida SWAN
-    *.png          ← tableros
-    *.mp4 / *.gif  ← videos (si aplica)
-```
-
-Si esa ubicación no permite escritura, se utiliza la carpeta de datos del
-usuario (`%LOCALAPPDATA%\Tablero de Oleaje\salidas` en Windows y
-`~/Library/Application Support/Tablero de Oleaje/salidas` en macOS). **Acerca de**
-muestra la ruta efectiva.
-
-## Demo de portafolio (rápida)
-
-- Si ya tienes una corrida SWAN en disco: usa **«Ver una corrida SWAN ya hecha»** y genera el tablero/video.
-- Para probar sin cuenta CDS, usa **«Analizar oleaje en un punto» → «Tengo un archivo»**
-  y selecciona `ejemplos/oleaje_demo_sintetico.csv`. Son datos sintéticos, exclusivos
-  para comprobar el funcionamiento; los paneles de extremos se omiten por duración.
-- ERA5 necesita una cuenta propia y aceptación de los términos del dataset.
-  La nueva petición espectral se verificó con documentación oficial y pruebas
-  simuladas; su descarga autenticada real sigue pendiente.
-
-## Modo guiado
-
-La app arranca en una pantalla de inicio (**«¿Qué quieres hacer?»**) con tres
-caminos paso a paso, pensados para no tener que conocer el orden del flujo. Cada
-camino es un asistente con barra de pasos y botones *Atrás / Siguiente*:
-
-- **Analizar oleaje en un punto** — origen de datos (archivo `.mat/.csv/.nc` o
-  descarga ERA5) → revisión (variables, validación física y qué productos se
-  podrán generar) → **tablero de curvas**.
-- **Modelar propagación con SWAN** — malla por lat/lon → batimetría (descarga
-  automática o `.bot` propio) → borde (manual o derivado de ERA5/serie) → correr
-  SWAN → **tablero de mapas**. Incluye un paso opcional para agregar un **dominio anidado (nido)** más fino:
-  define su malla por lat/lon y su propia batimetría, y la app arma el par
-  grande+nido (NGRID/NESTOUT ↔ BOU NEST) y lo corre en orden. Opcionalmente, un
-  punto de salida espectral en el nido.
-- **Ver una corrida SWAN ya hecha** — eliges la carpeta corrida y autodetecta si
-  generar **mapas** (estacionaria) o **video** (no estacionaria).
-
-Cada camino reutiliza el mismo motor que el modo avanzado; no hay lógica
-duplicada. El enlace **«Herramientas sueltas (modo avanzado)»** abre la caja de
-herramientas de siempre, descrita abajo.
-
-## Modo avanzado
-
-En modo avanzado, la ventana ofrece un selector y estas acciones:
-
-- **Crear** — autodetecta el tipo de entrada y genera el producto:
-  - archivo `.mat/.csv/.nc` (serie temporal) → **tablero de curvas** (PNG);
-  - carpeta SWAN estacionaria → **tablero de mapas** (PNG);
-  - carpeta SWAN no estacionaria (`*NonSt.swn` o `.mat` con sello de tiempo) →
-    **video** del evento (MP4, o GIF si no hay ffmpeg).
-- **Procesar SWAN…** — el paso previo: corre el modelo. Dos modos:
-  - *Correr caso existente*: elige una carpeta con el/los `.swn` ya armados y los
-    ejecuta (orden dominio grande → nido), con log en vivo y botón de cancelar;
-  - *Armar y correr*: formulario (malla, batimetría, borde, salidas) que genera el
-    `.swn` y lo corre. Valida coherencia física antes de lanzar. El botón
-    **«Definir por lat/lon…»** calcula la malla UTM (origen, celdas y zona) desde
-    un centro lat/lon + tamaño + resolución, así no hace falta saber el UTM. El
-    botón **«Generar batimetría…»** crea el `.bot` desde la malla y la *Zona UTM*:
-    descarga batimetría global (GEBCO/ETOPO) de la zona, o usa un raster local
-    propio (SHOA u otro `.nc`); proyecta a UTM, interpola y rellena el campo de
-    batimetría. Avisa el rango de profundidad y el % de nodos en tierra.
-
-En *Armar y correr*, el botón **«Tomar borde de ERA5/serie…»** deriva la condición
-de borde (Hs/Tp/Dir) desde una serie de oleaje (un `.nc` de ERA5 o tu `.mat/.csv`):
-eliges la condición —periodo de retorno (Gumbel), máximo observado o reinante— y
-rellena los campos. La misma acción está en la ventana *Descargar ERA5* como
-**«Enviar a SWAN como borde»**. El lado de entrada, la dispersión, la malla y la
-batimetría los completas tú. **Convención del campo Dir: náutica** (de dónde viene
-el oleaje, grados desde el Norte); el `.swn` generado emite `SET NAUTICAL` para
-interpretarlo igual.
-
-El campo *Offset UTM grande (avanzado)* fija la georreferencia de los mapas; por
-defecto es el Golfo de Arauco. Cámbialo sólo para una corrida de otro lugar (no
-altera la forma de los mapas, sólo las etiquetas de los ejes).
-
-Todas las salidas van a `salidas\<fuente>\`, una subcarpeta por archivo o corrida.
-
-## Flujo completo
-
-```
-[Procesar SWAN]  archivos iniciales (.swn + .bot + bordes)
-       │           → corre SWAN → salidas BLOCK en la carpeta
-       ▼
-[Crear]          carpeta de resultados → tablero / video en salidas\<fuente>\
-```
-
-## Módulos
-
-| Archivo | Rol |
+| Herramienta | Cuándo se necesita |
 |---|---|
-| `app_web.py` + `ui/` | **Interfaz principal** (pywebview): tres caminos guiados + modo avanzado. |
-| `api_web.py` · `motor_web.py` | Puente JS ↔ motor Python (sin tkinter). |
-| `app_tablero.py` · `asistente.py` · `pasos_*.py` · `gui_swan.py` | **Obsoletos** (tkinter); conservados para tests. `app_tablero.py` redirige a web si se ejecuta. |
-| `io_oleaje.py` · `validacion.py` · `productos.py` · `tablero_oleaje.py` | Serie temporal en un punto → tablero de curvas. |
-| `io_swan.py` · `productos_swan.py` · `tablero_swan.py` | Campos SWAN estacionarios → tablero de mapas. |
-| `io_swan_nonst.py` · `video_swan.py` | Campos SWAN no estacionarios → videos (+ espectro). |
-| `io_era5.py` | Descarga de oleaje por coordenada desde ERA5 (serie Hs/Tp/Dir + espectros 2D). |
-| `particion_espectral.py` · `productos_particion.py` | Partición sea/swell por familias (watershed) → serie de Hs por familia, tabla y espectro polar. |
-| `borde_oleaje.py` | Deriva la condición de borde SWAN (Hs/Tp/Dir) de una serie: periodo de retorno (Gumbel), máximo observado o reinante. |
-| `io_batimetria.py` | Genera el `.bot` de la malla: descarga batimetría (GEBCO/ETOPO) por coordenadas o usa un raster local, proyecta a UTM e interpola. |
-| `geo_malla.py` | Define la malla por lat/lon (centro + tamaño + celda) y calcula sola la zona UTM y los campos UTM. |
-| `swan_runner.py` · `swan_builder.py` | Correr SWAN y armar el `.swn`. |
-| `rutas.py` · `config.py` | Carpeta de salidas · preferencias entre sesiones. |
-| `test_regresion.py` · `test_asistente.py` · `test_nesting.py` | Red de seguridad: valores conocidos del motor · navegación del wizard y composición de los caminos · motor de nesting (builder, validación y orden de corrida). |
+| **SWAN**, con `swanrun` accesible | Para ejecutar modelos. Puedes analizar series y visualizar corridas existentes sin instalarlo. |
+| **ffmpeg** | Para exportar videos MP4 y trabajar con animaciones largas. |
+| **Cuenta Copernicus CDS y token personal** | Para descargar ERA5 desde la app. Se configura en **Credenciales ERA5**. |
 
-## Decisiones de diseño
+### macOS
 
-- **Registro adaptativo**: cada producto declara lo que necesita; el pipeline
-  genera sólo lo que los datos permiten y reporta lo que falta. Por eso el nido no
-  estacionario de Coronel (inestable, casi todo NaN) se omite sin romper nada.
-- **Dominios por metadatos**: los dominios se detectan del `CGRID`; la
-  variable de cada salida SWAN, del comando `BLOCK` del `.swn` (cantidad HS/TPS/
-  DIR/SETUP), no del nombre del archivo. El offset UTM del dominio grande es un
-  parámetro (`utm_large`); el del nido se deriva de su `CGRID`.
-- **Alcance de formatos SWAN**: se comprobaron los archivos generados por la app
-  y las corridas históricas de Coronel. No se admite cualquier formato externo:
-  factores/IDLA alternativos, fondos INPGRID distintos de CGRID, HEADER o varias
-  cantidades por BLOCK requieren revisión. Mallas rotadas/esféricas se rechazan;
-  no interpretar este lector como universal.
-- **Orientación verificada contra MATLAB**: misma convención `flipud` y rellenos
-  `−9/−999 → NaN`; el peak del evento cae en el mismo paso que el script del curso.
+El repositorio incluye `iniciar_mac.command` y una
+[guía de uso para macOS](GUIAS%20DE%20USO/GUIA%20DE%20USO%20MAC.txt).
+Los scripts fueron revisados, pero la versión actual **todavía no se ha probado
+en un equipo macOS**. No hay un DMG actualizado validado para esta revisión.
 
-## Requisitos
+## Prueba con el ejemplo incluido
 
-Python **3.11+ de 64 bits**, dependencias declaradas en `requirements.txt`.
-Windows/Python 3.13 fue la combinación verificada en esta auditoría.
-Opcionales: `ffmpeg` (MP4; GIF para animaciones pequeñas si no está), `pytest` (tests).
-Para *Procesar SWAN*, SWAN instalado y `swanrun` en el PATH.
+Puedes obtener tu primer tablero sin descargar datos externos:
 
-### Credenciales ERA5 (descarga por coordenada)
+1. Abre **Analizar oleaje en un punto**.
+2. Selecciona **Tengo un archivo** y carga
+   [`ejemplos/oleaje_demo_sintetico.csv`](ejemplos/oleaje_demo_sintetico.csv).
+3. Avanza a **Revisión** para consultar las variables, los controles físicos y
+   los productos disponibles.
+4. Continúa a **Tablero** y pulsa **Generar tablero**.
 
-La descarga usa el Copernicus Climate Data Store. **Cada usuario debe usar su
-propia cuenta** (gratis):
+La app mostrará una vista previa y guardará el PNG. El archivo contiene 240
+registros artificiales separados cada tres horas; **no representa observaciones
+ni una simulación física**. Su formato se describe en
+[`ejemplos/LEEME.txt`](ejemplos/LEEME.txt).
 
-1. Crea una cuenta en [cds.climate.copernicus.eu](https://cds.climate.copernicus.eu) y acepta los términos
-   del dataset ERA5.
-2. En la app web: barra lateral → **Credenciales ERA5** → pega tu token personal (PAT),
-   guarda y opcionalmente prueba la conexión.
+## Datos y resultados
 
-Alternativa manual: archivo `~/.cdsapirc` (en Windows,
-`C:\Users\<tu-usuario>\.cdsapirc`):
+Los tableros, videos y series exportadas se guardan normalmente en `salidas/`,
+dentro de la carpeta de la aplicación. Si esa ubicación no permite escritura,
+se utiliza la carpeta de datos del usuario. **Acerca de** muestra la ruta
+efectiva y permite abrirla. Los archivos del modelo y los resultados de la
+corrida SWAN permanecen en la carpeta del caso elegida.
 
-   ```
-   url: https://cds.climate.copernicus.eu/api
-   key: <TOKEN-PERSONAL>
-   ```
+Para tus propios datos, usa las columnas y unidades del ejemplo como referencia.
+Los lectores `.mat` y `.nc` esperan estructuras compatibles con las documentadas
+en el proyecto; la extensión por sí sola no garantiza compatibilidad.
 
-Sin credenciales válidas, el botón "Descargar ERA5…" avisa y no intenta descargar.
+Las series de entrada deben usar **convención náutica de procedencia**: grados
+desde el norte, indicando de dónde viene el oleaje. Es también la convención de
+los bordes generados; el lector de archivos propios no detecta ni convierte
+automáticamente otras convenciones. Para una corrida SWAN con coordenadas
+locales, revisa también su origen UTM antes de interpretar la ubicación de los mapas.
 
-## Tests
+## Estado y alcance
+
+En la [auditoría del 22 de septiembre de 2026](docs/AUDITORIA_2026-09-22.md)
+se aprobaron **255 pruebas**. La verificación incluyó una instalación en un
+entorno limpio, apertura en WebView2, generación de un tablero desde la interfaz,
+lectura de datos históricos y dos corridas SWAN con casos sintéticos.
+
+Las pruebas se realizaron en el mismo computador de desarrollo con Windows y
+Python 3.13 de 64 bits. Queda pendiente comprobar la instalación en otro equipo
+y cuenta sin administrador. El conjunto de versiones utilizado está registrado
+en [`requirements-windows-py313.lock`](requirements-windows-py313.lock).
+
+Antes de aplicar los resultados a un estudio, considera estos límites:
+
+- **Formatos SWAN:** se comprobaron los archivos generados por la app y los
+  casos históricos de referencia. Otros formatos de fondo, disposiciones de
+  datos o geometrías requieren revisión; el lector no cubre cualquier corrida.
+- **ERA5:** cada usuario necesita su propia cuenta y los términos del dataset
+  aceptados. La petición espectral actualizada sigue pendiente de una descarga
+  autenticada real.
+- **Interpretación de ingeniería:** los controles automáticos y las pruebas de
+  software no sustituyen la revisión de la calidad del registro, la suficiencia
+  de datos para extremos ni la calibración y validación del modelo.
+
+## Documentación
+
+| Recurso | Contenido |
+|---|---|
+| [Léeme primero](LEEME%20PRIMERO.txt) | Orientación para abrir la aplicación desde una carpeta. |
+| [Guía de Windows](GUIAS%20DE%20USO/GUIA%20DE%20USO%20WINDOWS.txt) | Requisitos, inicio y resolución de problemas habituales. |
+| [Guía de macOS](GUIAS%20DE%20USO/GUIA%20DE%20USO%20MAC.txt) | Instrucciones del lanzador disponible para ese sistema. |
+| [Auditoría integral](docs/AUDITORIA_2026-09-22.md) | Correcciones, evidencia de pruebas y mejoras pendientes. |
+| [Ejemplo de entrada](ejemplos/LEEME.txt) | Columnas, unidades y uso del CSV sintético. |
+
+Si encuentras un problema, puedes
+[abrir una incidencia](https://github.com/shysam1/tablero-oleaje-SWAN/issues)
+indicando sistema operativo, versión de Python, pasos para reproducirlo y
+mensaje de error. Adjunta un ejemplo de datos que puedas compartir y omite
+tokens, credenciales o información privada de los registros.
+
+<details>
+<summary><strong>Desarrollo y pruebas</strong></summary>
+
+La interfaz de escritorio usa **pywebview** y HTML/CSS/JavaScript; el motor de
+análisis utiliza Python, xarray, NumPy, SciPy y Matplotlib.
+
+| Componente | Archivos principales |
+|---|---|
+| Interfaz y puente Python | `app_web.py`, `ui/`, `api_web.py`, `motor_web.py` |
+| Series y productos | `io_oleaje.py`, `validacion.py`, `productos.py`, `tablero_oleaje.py` |
+| ERA5 y espectros | `io_era5.py`, `particion_espectral.py`, `productos_particion.py` |
+| Preparación y ejecución SWAN | `geo_malla.py`, `io_batimetria.py`, `borde_oleaje.py`, `swan_builder.py`, `swan_runner.py` |
+| Lectura y visualización SWAN | `io_swan.py`, `io_swan_nonst.py`, `productos_swan.py`, `tablero_swan.py`, `video_swan.py` |
+
+Desde PowerShell, después de preparar el entorno:
 
 ```powershell
-python -m pytest -q --capture=sys --basetemp="$env:USERPROFILE\pytest-tablero"
+.\.venv\Scripts\python.exe -m pip install pytest
+.\.venv\Scripts\python.exe -m pytest -q --capture=sys --basetemp="$env:USERPROFILE\pytest-tablero"
 ```
 
-`test_regresion.py` carga las corridas conocidas y comprueba los valores clave (Hs
-de borde, número de pasos, orientación); si los datos de prueba no están en disco,
-esos tests se saltan solos. En tu máquina puedes apuntar a carpetas locales con:
+Los tests con datos históricos requieren `TABLERO_DATOS_SWAN` y
+`TABLERO_DATOS_OLEAJE`. `TABLERO_PROBAR_SWAN=1` activa las dos corridas sintéticas
+con el ejecutable real. Los tests de interfaz requieren Playwright y Chromium.
+Sin esos recursos, los casos correspondientes se omiten; el comando básico no
+reproduce por sí solo las 255 pruebas de la auditoría.
 
-```powershell
-$env:TABLERO_DATOS_SWAN = "C:\ruta\a\SWAN_Coronel"
-$env:TABLERO_DATOS_OLEAJE = "C:\ruta\a\serie.mat"
-pytest test_regresion.py -v
-```
+Para crear una entrega filtrada usa `empaquetar_entrega.bat`. Los archivos se
+seleccionan mediante [`scripts/archivos_entrega.txt`](scripts/archivos_entrega.txt),
+excluyendo resultados, preferencias y entornos locales. Las fuentes del
+instalador Windows se compilan con `empaquetar_instalador.bat` e Inno Setup.
 
-`test_asistente.py` cubre la navegación del wizard
-(avanzar/retroceder, validación, contexto compartido) y que cada camino tenga sus
-pasos. Córrelos antes de dar por buena cualquier modificación.
+</details>
+
+---
+
+Desarrollada por **Javier Tarrazón** en el contexto de su formación en Ingeniería
+Civil en la Universidad de Concepción. Proyecto de desarrollo asistido por IA,
+con revisión técnica y comprobaciones documentadas.

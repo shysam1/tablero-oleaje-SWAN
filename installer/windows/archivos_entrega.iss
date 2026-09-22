@@ -66,3 +66,5 @@ Source: "{#SourceRoot}\ejemplos\oleaje_demo_sintetico.csv"; DestDir: "{app}\ejem
 Source: "{#SourceRoot}\ejemplos\LEEME.txt"; DestDir: "{app}\ejemplos"; Flags: ignoreversion
 Source: "{#SourceRoot}\docs\capturas\01_inicio.png"; DestDir: "{app}\docs\capturas"; Flags: ignoreversion
 Source: "{#SourceRoot}\docs\capturas\02_modelar.png"; DestDir: "{app}\docs\capturas"; Flags: ignoreversion
+Source: "{#SourceRoot}\docs\capturas\03_inicio_actual.png"; DestDir: "{app}\docs\capturas"; Flags: ignoreversion
+Source: "{#SourceRoot}\docs\capturas\04_tablero_demo.png"; DestDir: "{app}\docs\capturas"; Flags: ignoreversion

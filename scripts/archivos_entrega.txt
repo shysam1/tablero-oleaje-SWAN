@@ -66,3 +66,5 @@ ejemplos/oleaje_demo_sintetico.csv
 ejemplos/LEEME.txt
 docs/capturas/01_inicio.png
 docs/capturas/02_modelar.png
+docs/capturas/03_inicio_actual.png
+docs/capturas/04_tablero_demo.png

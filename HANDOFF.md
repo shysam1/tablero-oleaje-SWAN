@@ -23,6 +23,17 @@ requieren soporte y fixtures. Los datos originales se conservaron.
 
 ## Registro de cambios (más reciente primero)
 
+### 2026-09-22 · Presentación pública y guía de primera prueba (Codex)
+*Qué/por qué:* README reorganizado para que una persona nueva identifique qué
+hace la aplicación, vea la interfaz actual y pueda instalar y probar la revisión
+vigente. Se distinguen el código actualizado y la release histórica v1.0.1,
+los requisitos obligatorios y las herramientas opcionales. Se reemplazan
+instrucciones de botones antiguos y se explicitan alcance y validaciones pendientes.
+*Archivos:* `README.md`, dos capturas nuevas en `docs/capturas/`, manifiesto de
+entrega y lista Inno Setup sincronizada. Se preservan las capturas anteriores.
+*Notas:* enlaces y anclas locales comprobados, dos PNG válidos, render GFM
+inspeccionado en escritorio y móvil; 18 tests de portabilidad aprobados.
+
 ### 2026-09-22 · Auditoría integral y preparación de entrega local (Codex)
 *Qué/por qué:* auditoría orientada a uso por terceros. Se corrigieron preparación
 incompleta del entorno, empaquetado por comodín, Escape que confirmaba borrados,
